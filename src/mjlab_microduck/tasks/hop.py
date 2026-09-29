@@ -577,6 +577,20 @@ def make_hop_variant(
             print("  [hop] HOP_NO_PUSH set -> push_robot event REMOVED "
                   "(inspection only; do NOT train like this)")
 
+    # Optional: run the phase CONTINUOUSLY, for the same reason.
+    #
+    # With hold_prob 0.5 the viewer shows stand and hop interleaved, and holds
+    # run 1-5 s, so most of what you watch is the stand. That is correct for
+    # training and unhelpful when the question is "what does the hop look
+    # like". HOP_NO_HOLD=1 pins hold_prob to 0 so the clock never freezes.
+    # Pair it with HOP_NO_PUSH=1 to see the gait and nothing else.
+    if os.environ.get("HOP_NO_HOLD"):
+        twist = cfg.commands.get("twist")
+        if twist is not None and getattr(twist, "hold_prob", 0.0):
+            twist.hold_prob = 0.0
+            print("  [hop] HOP_NO_HOLD set -> phase never pauses, continuous hopping "
+                  "(inspection only; do NOT train like this)")
+
     # 4. Hop rewards. All three gate internally on sin(2*pi*phase) > 0.
     cfg.rewards["hop_both_feet_airborne"] = RewardTermCfg(
         func=microduck_mdp.hop_both_feet_airborne,
