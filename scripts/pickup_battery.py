@@ -66,6 +66,7 @@ def main():
     ap.add_argument("--num-envs", type=int, default=512)
     ap.add_argument("--seconds", type=float, default=12.0)
     ap.add_argument("--only", default=None, help="substring of a scenario name")
+    ap.add_argument("--policy", default=None, help="walking policy ONNX (default: pickup_datagen.PROD_POLICY)")
     args = ap.parse_args()
     rows = []
     for name, hand in SCENARIOS.items():
@@ -76,7 +77,8 @@ def main():
         if not os.path.exists(out):
             subprocess.run([sys.executable, "scripts/pickup_datagen.py", "--detector", args.detector, "--out", out,
                             "--num-envs", str(args.num_envs), "--seconds", str(args.seconds), "--seed", "200",
-                            "--force-pickup-at", "2.0", "--hand", f"{COMMON};{hand}"],
+                            "--force-pickup-at", "2.0", "--hand", f"{COMMON};{hand}",
+                            *(["--policy", args.policy] if args.policy else [])],
                            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         rows.append((name, *analyze(out)))
     print(f"\n[{args.tag}] {'scenario':34s} {'envs':>5s} {'paused%':>8s} {'lat p50':>8s} {'lat p90':>8s} {'resumes/env':>12s} {'never':>6s}")

@@ -2,6 +2,7 @@
 the training's welded hand in it.
 
     uv run python scripts/pickup_e2e_robotd.py [--video logs/pickup/e2e_robotd.mp4] [--scenario v2]
+        [--policy walk.onnx] [--detector pickup_detector.onnx]
 
 Needs the microduck checkout at ~/Pollen/microduck with `target/debug/robotd` built (the branch
 carrying `[pickup]`). Walks the duck with velstand, picks it up mid-walk (shaken), sets it down,
@@ -20,6 +21,8 @@ MICRODUCK = Path.home() / "Pollen/microduck"
 RL = Path.home() / "Pollen/microduck_rl"
 PORT = 7811
 VIDEO = sys.argv[sys.argv.index("--video") + 1] if "--video" in sys.argv else None
+WALK = sys.argv[sys.argv.index("--policy") + 1] if "--policy" in sys.argv else f"{RL}/logs/bench_onnx/velstand_fhathosb_3750.onnx"
+DETECTOR = sys.argv[sys.argv.index("--detector") + 1] if "--detector" in sys.argv else f"{MICRODUCK}/duck-control/models/pickup_detector.onnx"
 
 
 class HandWorld(bs.World):
@@ -67,7 +70,7 @@ state = Path(tempfile.mkdtemp(prefix="pk"))
 params = state / "robotd.toml"
 params.write_text(f"""[policy]
 enabled = true
-walk = "{RL}/logs/bench_onnx/velstand_fhathosb_3750.onnx"
+walk = "{WALK}"
 stand = "none"
 sitstand = "none"
 ground_pick = "none"
@@ -80,7 +83,7 @@ enabled = false
 
 [pickup]
 enabled = true
-model = "{MICRODUCK}/duck-control/models/pickup_detector.onnx"
+model = "{DETECTOR}"
 """)
 sock = state / "duck.sock"
 log = open(state / "robotd.log", "w")
