@@ -141,7 +141,9 @@ def subscriber():
                 msg = json.loads(line)
                 p = msg.get("params") or {}
                 if "policy" in p:
-                    labels.append((time.time(), p["policy"]))
+                    # paused-because-held is a STATE (safety.picked_up); the policy label is then `held`
+                    lab = "picked_up" if (p.get("safety") or {}).get("picked_up") else p["policy"]
+                    labels.append((time.time(), lab))
         except OSError:
             time.sleep(0.2)
 
