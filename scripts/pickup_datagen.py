@@ -65,7 +65,7 @@ class OnnxMLP(torch.nn.Module):
         return x
 
 
-def build_env(num_envs, device, seed, keep_held_tilted=False):
+def build_env(num_envs, device, seed, keep_held_tilted=False, quiet=False):
     cfg = make_microduck_velstand_env_cfg(play=False, rough=True)
     cfg = make_backlash_variant(cfg, MICRODUCK_ALLCOLLISIONS_BACKLASH_ROBOT_CFG)
     cfg.scene.num_envs = num_envs
@@ -77,6 +77,12 @@ def build_env(num_envs, device, seed, keep_held_tilted=False):
     # held robots are tilted way past that and falls must stay in the data
     cfg.terminations.pop("fell_over", None)
     cfg.curriculum.pop("fell_over_disable", None)
+    if quiet:
+        # no shoves and no prone starts: for measuring the robot itself (pickup_pause_pose.py)
+        for name in ("push_robot", "topple_push", "random_prone_init"):
+            cfg.events.pop(name, None)
+        for name in ("prone_init_prob", "topple_push_range"):
+            cfg.curriculum.pop(name, None)
     if keep_held_tilted:
         # fallen_too_long resets anything tilted >40° for 8 s — including a robot somebody is
         # holding upside down. For training data that only shortens long flipped holds; for the
