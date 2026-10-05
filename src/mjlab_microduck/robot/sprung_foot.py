@@ -87,7 +87,13 @@ H_ADD = 0.030      # measured on the Sarrus prototype (was an assumed 0.025)
 #
 # See rebot-lerobot/bench/RESULTS.md and
 # docs/sim2real/spring_boot_identification_spec.md.
-K_MEASURED = 3344.0
+# SUPERSEDED 2026-10-02 by the load-cell bench, which measured force directly
+# at the jaw instead of inferring it. k = 4290 N/m (closing 4360, opening 4220).
+# The old 3344 was 22% LOW: it came through the previous 100 mm printed fingers,
+# whose compliance was in series with the boot. The rig is now 14x stiffer than
+# the boot, so that correction moves k by only 7%. Quote to +/-5%.
+# See rebot-lerobot/bench/RESULTS_loadcell.md.
+K_MEASURED = 4290.0
 
 # DELTA mass of fitting a spring boot, per foot: the 69 g spring boot REPLACES
 # the 18 g standard pad foot, so 69 - 18 = 51 g. The common motor-to-boot
@@ -118,9 +124,33 @@ TRAVEL = 0.012     # measured (was an assumed 0.015)
 #
 # This is provisional. The real number is measurable on the prototype as
 # loading-vs-unloading hysteresis; that measurement should replace this estimate.
-DAMPING_RATIO = 0.3
+# SUPERSEDED 2026-10-02. The load-cell bench measured the loss directly and it
+# is COULOMB, not viscous, and far smaller than assumed:
+#
+#   loss per cycle   7% of input work (retention 0.93-0.96 at 5 +/- 2.8 mm)
+#   Coulomb Fc       ~0.65 N at that bias, ~4% of load, growing with force
+#   viscous c        not detectable, <= ~4 N.s/m, consistent with ZERO
+#
+# September's "retention 0.35-0.47" was the RACK, not the boot. The boot is far
+# springier than this campaign has been assuming.
+#
+# The sign of the frequency dependence settles the form: loop area FALLS with
+# speed (7.64 mJ at 0.1 Hz, 4.70 mJ at 2 Hz). A viscous term would make it
+# RISE. Fitting a viscous model to that gives a negative c, because the model
+# has no Stribeck term and books the drop as negative viscosity.
+#
+# So the loss moves to SPRING_FRICTIONLOSS below and the viscous term drops to a
+# token value. zeta = 0.3 (c = 9.18 N.s/m) is EXCLUDED by the measurement: for it
+# to be right the 2 Hz loop would have to be ~10.7 mJ, needing a lag 5 ms from
+# the measured -4.2 +/- 1 ms. It over-damped the boot by about 3x.
+DAMPING_RATIO = 0.03
 
-DAMPING = None     # absolute N.s/m; None derives it from DAMPING_RATIO
+# Absolute now, not ratio-derived. 0.5 N.s/m is a steel spring's own viscous
+# loss, well inside the <= 4 N.s/m bound. The old worry that a low viscous term
+# leaves the pad ringing at 33-57 Hz against a 50 Hz controller is answered by
+# the Coulomb term instead: 0.65 N on a 51 g pad is a 0.15 mm dead band at
+# k = 4290, which is what actually stops the chatter in the real mechanism.
+DAMPING = 0.5      # absolute N.s/m; None would derive it from DAMPING_RATIO
 
 
 def damping_for(stiffness: float, pad_mass: float, ratio: float = DAMPING_RATIO) -> float:
@@ -138,15 +168,21 @@ def damping_for(stiffness: float, pad_mass: float, ratio: float = DAMPING_RATIO)
 # letting it float within its travel and chatter against the hard stop.
 SPRING_PRELOAD = 0.00074   # m of precompression at rest
 
-# These exist to OVERRIDE the `microduck` childclass joint defaults
-# (frictionloss=0.1, armature=0.005 in robot_walk.xml), which the spring joint
-# would otherwise inherit silently — the joint is added inside that childclass
-# scope. Zero is not a physical claim about a real mechanism: it makes the model
-# match the spec's *idealised* spring, whose only dissipation is the
-# viscous DAMPING_RATIO term.
-# Mechanism stiction and mechanism inertia are hardware-phase concerns the spec
-# explicitly defers.
-SPRING_FRICTIONLOSS = 0.0
+# These override the `microduck` childclass joint defaults (frictionloss=0.1,
+# armature=0.005 in robot_walk.xml), which the spring joint would otherwise
+# inherit silently, since it is added inside that childclass scope.
+#
+# frictionloss is no longer zero, and that is the main modelling change of
+# 2026-10-02: the boot's dissipation is Coulomb friction of ~0.65 N, measured
+# directly, not the viscous damper this file assumed for a year. It was zero
+# before because the spec idealised the spring and deferred stiction to the
+# hardware phase -- which has now happened.
+#
+# 0.65 N is the figure at the 5 mm / ~21 N bias point. It GROWS with load
+# (0.33 N at 5 N, 1.0 N at 20-25 N, i.e. ~4% of force), which MuJoCo's constant
+# frictionloss cannot express; 0.65 is right in the middle of the robot's own
+# stance loads.
+SPRING_FRICTIONLOSS = 0.65
 SPRING_ARMATURE = 0.0
 
 # Joint-limit solver settings for the mechanical end-stop.

@@ -175,7 +175,20 @@ def test_hop_arms_are_locked_plus_the_stiffness_set():
     # k2500/k3900 were a BRACKET (they gave 23 and 27 mm of rise); K_MEASURED is
     # the real prototype, measured on the gripper bench, and is the arm to train.
     assert stiffnesses == {2500.0, K_MEASURED, 3900.0}
-    assert 2500.0 < K_MEASURED < 3900.0, "the bracket must straddle the measurement"
+    # THE BRACKET NO LONGER STRADDLES THE MEASUREMENT, deliberately recorded
+    # rather than quietly fixed. k2500/k3900 were chosen around the gripper
+    # bench's 3344, which the 2026-10-02 load-cell bench superseded: the old
+    # figure was 22% low because the previous printed fingers were compliant in
+    # series with the boot. The real boot is 4290 N/m, ABOVE both bracket arms.
+    #
+    # Those two arms are a completed Phase 4 sweep (23 mm and 27 mm of rise) and
+    # are not being re-run, so they stay as the historical record. Anyone
+    # re-running the sweep needs a stiffer upper arm, ~5000 N/m, to bracket
+    # 4290 the way 2500/3900 once bracketed 3344.
+    assert K_MEASURED > 3900.0, (
+        "if K_MEASURED has moved back below the bracket, restore the straddle "
+        "assertion -- this note is about 4290 specifically"
+    )
     # The Locked control must wear the SAME geometry as the sprung arms, so it
     # carries K_MEASURED as a nominal stiffness with travel 0 -- the spring joint
     # is then omitted entirely and the value is unused.

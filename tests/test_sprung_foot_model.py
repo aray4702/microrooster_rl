@@ -58,11 +58,13 @@ def test_stiffness_and_damping_reach_the_compiled_model(model):
     for j in SPRING_JOINTS:
         jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, j)
         assert model.jnt_stiffness[jid] == pytest.approx(1500.0)
-        # Damping is DERIVED per arm as c = 2*zeta*sqrt(k*pad_mass), so the
-        # pad's damping ratio stays constant as pad mass varies. An absolute
-        # 0.5 N.s/m left zeta at 0.013-0.023 — the pad rang at 33-57 Hz against
-        # a 50 Hz controller and never settled between steps.
-        expected_c = damping_for(1500.0, PAD_MASS)
+        # Damping is ABSOLUTE since 2026-10-02: the load-cell bench found the
+        # boot's loss is Coulomb (~0.65 N) and the viscous term undetectable
+        # (<= 4 N.s/m, consistent with zero), so the ratio-derived c = 9.18 is
+        # excluded. The old worry that a small viscous term leaves the pad
+        # ringing at 33-57 Hz is answered by SPRING_FRICTIONLOSS instead.
+        from mjlab_microduck.robot.sprung_foot import DAMPING
+        expected_c = DAMPING if DAMPING is not None else damping_for(1500.0, PAD_MASS)
         assert model.dof_damping[model.jnt_dofadr[jid]] == pytest.approx(expected_c)
 
 
@@ -186,16 +188,20 @@ def test_spring_joint_does_not_inherit_xml_joint_defaults(model):
     The spring joint is added inside that childclass scope, so it silently
     inherited both: a dry-friction term worth roughly a third of total
     dissipation, and 5 g of effective inertia on a 20 g pad (+25%), invisible in
-    the mass check. The spec's spring is IDEALISED — its only dissipation is
-    `damping`.
+    the mass check.
+
+    What must hold is that the joint carries OUR numbers rather than the
+    childclass's. Since 2026-10-02 our frictionloss is deliberately non-zero
+    (0.65 N, measured on the load cell) -- so this asserts it is not the
+    inherited 0.1, rather than asserting a bare zero as it used to.
     """
     for j in SPRING_JOINTS:
         jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, j)
         dof = model.jnt_dofadr[jid]
         assert model.dof_frictionloss[dof] == pytest.approx(SPRING_FRICTIONLOSS)
         assert model.dof_armature[dof] == pytest.approx(SPRING_ARMATURE)
-        assert model.dof_frictionloss[dof] == 0.0
-        assert model.dof_armature[dof] == 0.0
+        assert model.dof_frictionloss[dof] != pytest.approx(0.1), "inherited the childclass value"
+        assert model.dof_armature[dof] != pytest.approx(0.005), "inherited the childclass value"
 
 
 def test_springref_encodes_the_preload(model):
@@ -252,12 +258,20 @@ def test_damping_scales_with_pad_mass_to_hold_zeta_constant():
     import math
 
     k = 3900.0
+    ratio = 0.3        # the helper under test, not the current default
     for pad in (0.030, 0.090):
-        m = make_sprung_foot_spec_fn(stiffness=k, pad_mass=pad)().compile()
+        # damping=None selects the ratio path explicitly; the shipped default is
+        # now an absolute c, so without this the test would measure nothing.
+        m = make_sprung_foot_spec_fn(
+            stiffness=k, pad_mass=pad, damping=None, damping_ratio=ratio
+        )().compile()
         jid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, SPRING_JOINTS[0])
         c = m.dof_damping[m.jnt_dofadr[jid]]
         zeta = c / (2.0 * math.sqrt(k * pad))
-        assert zeta == pytest.approx(DAMPING_RATIO, rel=1e-6)
+        # damping_for() is the ratio path, exercised explicitly here. It is no
+        # longer the default (DAMPING is absolute), but the helper must still
+        # hold zeta constant across pad mass for anyone who passes damping=None.
+        assert zeta == pytest.approx(ratio, rel=1e-6)
 
 
 def test_explicit_damping_overrides_the_ratio():
