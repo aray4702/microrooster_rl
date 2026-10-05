@@ -74,7 +74,7 @@ class TargetAngleCommand(CommandTerm):
             torch.rand(len(env_ids), device=self.device) * (hi - lo) + lo
         )
 
-    def _update_command(self) -> None:
+    def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
         pass
 
     def _update_metrics(self) -> None:

@@ -141,8 +141,11 @@ HOME_FRAME = EntityCfg.InitialStateCfg(
 
 FULL_COLLISION = CollisionCfg(
     geom_names_expr=[".*_collision"],
+    # mjlab >= 1.6 requires these explicit (values = the old implicit defaults).
+    contype=1,
+    conaffinity=1,
     condim={r"^(left|right)_foot_collision$": 3, ".*_collision": 1},
-    priority={r"^(left|right)_foot_collision$": 1},
+    priority={r"^(left|right)_foot_collision$": 1, ".*": 0},
     friction={r"^(left|right)_foot_collision$": (1.0,)},
 )
 

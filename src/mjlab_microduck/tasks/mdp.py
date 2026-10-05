@@ -145,6 +145,34 @@ try:
 except Exception as _e:  # pragma: no cover
     print(f"[mdp] Patch 5 NOT applied ({_e!r})")
 
+# Patch 6: interval-event timers carry across resets (mjlab <= 1.5 behavior).
+# mjlab 1.6 resamples function-based interval timers on every episode reset, so
+# no push can land in the first interval_range_s[0] seconds of an episode and
+# short episodes (StandUp 6 s, BallKick 5 s) get at most one late push. Every
+# policy up to 2026-10 trained with the countdown carried over (pushes at any
+# point of an episode, including mid-rise), so restore that for function-based
+# terms. Class-based terms keep 1.6's fix (1.3 wrote them into the wrong slots).
+from mjlab.managers.event_manager import EventManager as _EventManager  # noqa: E402
+
+_orig_event_reset = _EventManager.reset
+
+
+def _event_reset_carry_interval_timers(self, env_ids=None):
+    class_terms = self._mode_class_term_cfgs.get("interval", [])
+    saved = [
+        (index, self._interval_term_time_left[index].clone())
+        for index, term_cfg in enumerate(self._mode_term_cfgs.get("interval", []))
+        if not term_cfg.is_global_time and not any(term_cfg is c for c in class_terms)
+    ]
+    out = _orig_event_reset(self, env_ids)
+    for index, time_left in saved:
+        self._interval_term_time_left[index].copy_(time_left)
+    return out
+
+
+_EventManager.reset = _event_reset_carry_interval_timers
+print("[mdp] Patch 6 active: interval-event timers carry across resets (pre-1.6 push timing)")
+
 if TYPE_CHECKING:
     from mjlab.viewer.debug_visualizer import DebugVisualizer
 
@@ -4818,7 +4846,8 @@ class RelativeHeadingVelocityCommand(VelocityCommandCommandOnly):
         # Zero ang_vel slot; _update_command will fill it each step
         self.vel_command_b[env_ids, 2] = 0.0
 
-    def _update_command(self) -> None:
+    def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
+        del env_ids  # Pure function of the current state; refreshing all envs is safe.
         # Do NOT call super()._update_command() — it would run the heading
         # proportional controller and overwrite cmd[2] with a yaw rate.
         # Instead recompute heading error from scratch each step.
@@ -5201,7 +5230,13 @@ class GroundPickPhaseCommand(UniformVelocityCommand):
     def command(self) -> torch.Tensor:
         return self.vel_command_b
 
-    def compute(self, dt: float) -> None:
+    def compute(
+        self, dt: float | torch.Tensor, env_ids: torch.Tensor | None = None
+    ) -> None:
+        # mjlab >= 1.6: dt is a per-env tensor on auto-reset steps (0 for the
+        # reset envs) and env_ids is set on the reset() path (dt=0.0), so the
+        # phase advance below is already a no-op for non-advancing envs.
+        del env_ids
         self._gp_phase = (self._gp_phase + dt / self._period) % 1.0
         self.vel_command_b[:, 0] = torch.cos(2 * torch.pi * self._gp_phase)
         self.vel_command_b[:, 1] = torch.sin(2 * torch.pi * self._gp_phase)
@@ -5218,7 +5253,7 @@ class GroundPickPhaseCommand(UniformVelocityCommand):
     def _resample_command(self, env_ids: torch.Tensor) -> None:
         pass  # Phase is continuous; no resampling needed
 
-    def _update_command(self) -> None:
+    def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
         pass  # Updated in compute()
 
     def _update_metrics(self) -> None:
@@ -5288,7 +5323,7 @@ class UniformPoseCommand(CommandTerm):
     def _update_metrics(self) -> None:
         pass
 
-    def _update_command(self) -> None:
+    def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
         pass
 
     def _resample_command(self, env_ids: torch.Tensor) -> None:
@@ -5350,7 +5385,8 @@ class StandingGatedPoseCommand(UniformPoseCommand):
         else:
             self._command[:] = self._raw * standing.float().unsqueeze(1)
 
-    def _update_command(self) -> None:
+    def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
+        del env_ids  # _gate() is a pure function of the current state.
         self._gate()
 
     def _resample_command(self, env_ids: torch.Tensor) -> None:
@@ -5363,7 +5399,7 @@ class StandingGatedPoseCommand(UniformPoseCommand):
             if p > 0.0:
                 raw[torch.rand(n, device=self.device) < p, i] = 0.0
         self._raw[env_ids] = raw
-        self._gate()  # resets don't run _update_command: keep the walking-zero invariant
+        self._gate()  # mid-episode timer resamples must also keep the walking-zero invariant
 
 
 @dataclass(kw_only=True)
@@ -6651,8 +6687,12 @@ class SitStandCommand(UniformVelocityCommand):
             (self._stand_z - z) / max(self._stand_z - self._sit_z, 1e-6), 0.0, 1.0
         )
 
-    def compute(self, dt: float) -> None:
-        super().compute(dt)
+    def compute(
+        self, dt: float | torch.Tensor, env_ids: torch.Tensor | None = None
+    ) -> None:
+        # mjlab >= 1.6: dt is a per-env tensor on auto-reset steps (0 for the
+        # reset envs) and env_ids is set on the reset() path (dt=0.0).
+        super().compute(dt, env_ids)
         # Episode-start re-init of the blend from the ACTUAL trunk height.
         # Done here (not in reset()) because the command manager resets BEFORE
         # the set_ground_state event teleports the robot, so reset() would read
@@ -6666,7 +6706,7 @@ class SitStandCommand(UniformVelocityCommand):
         delta = self.vel_command_b[:, 0] - self._alpha
         self._alpha += torch.clamp(delta, -step, step)
 
-    def _update_command(self) -> None:
+    def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
         pass  # No heading controller / standing-env machinery.
 
     def _update_metrics(self) -> None:
