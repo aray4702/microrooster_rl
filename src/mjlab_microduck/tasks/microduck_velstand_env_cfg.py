@@ -267,6 +267,12 @@ WARM_START_CHECKPOINT = "model_3750.pt"
 # Warm start: the walk exists at iter 0, so fell_over only needs a short
 # adaptation window to the all-collisions model before falls become data.
 FELL_OVER_DISABLE_ITER = 100 if WARM_START else 500
+# Phase-1 fell_over limit. kp-120 lesson (run vjmtduhx): HOME collapses within ~1 s of spawn
+# at kp 120 (97 % past 40°, vs 31 % at kp 200) and the 70° limit left a 40-70° kneel that
+# lived the full 8 s fallen_too_long window while tracking/head rewards kept paying → the run
+# locked into kneeling by iter 50 and never stood (ckpt 1000: tilt 75°, z 0.085, knees +0.5).
+# From scratch, terminate at the fallen-gate tilt instead so no lean outlives standing.
+FELL_OVER_PHASE1_DEG = 70.0 if WARM_START else 40.0
 
 # Fallen gates. LESSON (first rebase training run): the recovery REWARDS must
 # gate on TILT ONLY. Gating them on low height too made SITTING (z≈0.07, trunk
@@ -774,16 +780,17 @@ def make_microduck_velstand_env_cfg(play: bool = False, rough: bool = False) -> 
     )
 
     # ── Curricula ─────────────────────────────────────────────────────────────
-    # Phase 1 → 2: disable fell_over at iter 500 (limit 70° → 180°) so falls
+    # Phase 1 → 2: disable fell_over at iter 500 (limit FELL_OVER_PHASE1_DEG → 180°) so falls
     # become recovery training instead of episode ends.
     if not play:
+        cfg.terminations["fell_over"].params["limit_angle"] = math.radians(FELL_OVER_PHASE1_DEG)
         cfg.curriculum["fell_over_disable"] = CurriculumTermCfg(
             func=microduck_mdp.termination_param_curriculum,
             params={
                 "term_name": "fell_over",
                 "param_stages": [
                     {"step": 0,
-                     "params": {"limit_angle": math.radians(70.0)}},
+                     "params": {"limit_angle": math.radians(FELL_OVER_PHASE1_DEG)}},
                     {"step": FELL_OVER_DISABLE_ITER * NUM_STEPS_PER_ENV,
                      "params": {"limit_angle": math.pi}},
                 ],

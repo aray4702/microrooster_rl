@@ -476,3 +476,13 @@ def test_yaw_fix_wired():
     tw = cfg.commands["twist"]
     assert tw.turn_in_place_min_frac == vs.TURN_IN_PLACE_MIN_FRAC and tw.rel_turn_in_place_envs == vs.TURN_IN_PLACE_FRACTION_VELSTAND
     assert vs.MicroduckVelStandRlCfg.algorithm.bc_cfg["unanchor_turn_in_place"] is True
+
+
+def test_phase1_fell_over_limit_matches_fallen_gate_from_scratch():
+    """kp-120 lesson: a 70° phase-1 limit lets a 40-70° kneel outlive standing."""
+    cfg = vs.make_microduck_velstand_env_cfg()
+    limit = math.degrees(cfg.terminations["fell_over"].params["limit_angle"])
+    stage0 = cfg.curriculum["fell_over_disable"].params["param_stages"][0]["params"]["limit_angle"]
+    assert math.isclose(math.degrees(stage0), limit)
+    if not vs.WARM_START:
+        assert limit <= vs.REWARD_GATE_TILT_DEG
