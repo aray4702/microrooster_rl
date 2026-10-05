@@ -1,5 +1,10 @@
 """Microduck VelStand environment: walking + protective fall + recovery, one policy.
 
+BRANCH velstand_kp120 (2026-10-05): kp_fw 200 → 120 repo-wide, trained FROM SCRATCH
+(WARM_START False, ENABLE_EXPERT_BC False — all teachers are kp-200 policies). This is the
+pre-BC from-scratch schedule (runs 1-7 of the 2026-07 design, below): expect the walk first,
+prone recovery is the open risk (the reason BC was added).
+
 CURRENT POLICY (Hub v7, 2026-10-05): wandb j4i6yoq2 @ model_1250, trained from this
 file at commit 53fb7d1 — warm-started from fhathosb@3750 with ENABLE_BODY_CONTROL.
 Lineage, launch commands and eval numbers: docs/velstand_policy.md.
@@ -251,7 +256,10 @@ NUM_STEPS_PER_ENV = 24
 # velocity-recipe curriculum to its final stage so the loaded walk is trained
 # under the conditions it was trained under. Set False to train from scratch
 # with the original from-scratch schedule (phase constants below scale up).
-WARM_START = True
+# kp_fw 120 (branch velstand_kp120): every teacher (walk 441tzs6d, stand 69u48n8l) and every
+# velstand checkpoint was trained at kp_fw 200 — their joint targets mean different motion on
+# softer servos — so this branch trains FROM SCRATCH with no warm start and no BC / walk anchor.
+WARM_START = False
 WARM_START_RUN = "pollen-robotics/mjlab_microduck/441tzs6d"   # alpha_walking.onnx
 WARM_START_CHECKPOINT = "model_3750.pt"
 
@@ -301,7 +309,7 @@ RECOVERY_ECON_KICKIN_ITER = 600 if WARM_START else 1200
 # Run-2 fix (1bqctpkq, 0 recoveries @1085 even with the attempt tax relieved):
 # distill the deployed stand expert into the fallen frames (see distill.py).
 # The expert recovers 100% face-down/up and 95% side on this model in ~1 s.
-ENABLE_EXPERT_BC = True
+ENABLE_EXPERT_BC = False   # kp 120: the kp-200 stand expert / walk anchor are off-model
 EXPERT_BC_COEF = 1.0
 EXPERT_BC_GATE_TILT_DEG = 35.0
 
@@ -327,7 +335,7 @@ BODY_ALIVE_YAW = 0.02
 BODY_ZERO_CMD_PROB = 0.3
 BODY_Z_ZERO_PROB = 0.5             # share of body commands that are tilt-only (→ teachable)
 BODY_TRACK_WEIGHT = 2.0
-BODY_RANGE_STAGES_ITERS = (0, 300)  # half range → full range (warm start: iters of THIS run)
+BODY_RANGE_STAGES_ITERS = (0, 300) if WARM_START else (0, 1500)  # half range → full range
 # Leg pose stds while a body command is active (standing). The standing stds (hip_roll
 # 0.05, knee/hip_pitch 0.15, ankle 0.1) priced a 10° commanded roll at -0.85/step.
 BODY_POSE_STD = {
@@ -389,11 +397,15 @@ SERVO_STALL_VEL = 0.5
 # (and therefore protective landing + recovery) gets dense on-policy data.
 # Ramp starts once fell_over is off (a topple before that is just a reset).
 TOPPLE_PUSH_INTERVAL_S = (4.0, 8.0)
+# From scratch the stages must stay sorted after FELL_OVER_DISABLE_ITER (500): the old fixed
+# 400/800 put the 0.9 stage before the 0.6 one, which push_curriculum (last passed stage wins)
+# then skipped entirely.
+_TOPPLE_ITERS = (400, 800) if WARM_START else (1000, 1500)
 TOPPLE_PUSH_STAGES = [
     {"step": 0,                                          "velocity_range": {"x": (-0.3, 0.3), "y": (-0.3, 0.3)}},
     {"step": FELL_OVER_DISABLE_ITER * NUM_STEPS_PER_ENV, "velocity_range": {"x": (-0.6, 0.6), "y": (-0.6, 0.6)}},
-    {"step": 400 * NUM_STEPS_PER_ENV,                    "velocity_range": {"x": (-0.9, 0.9), "y": (-0.9, 0.9)}},
-    {"step": 800 * NUM_STEPS_PER_ENV,                    "velocity_range": {"x": (-1.2, 1.2), "y": (-1.2, 1.2)}},
+    {"step": _TOPPLE_ITERS[0] * NUM_STEPS_PER_ENV,       "velocity_range": {"x": (-0.9, 0.9), "y": (-0.9, 0.9)}},
+    {"step": _TOPPLE_ITERS[1] * NUM_STEPS_PER_ENV,       "velocity_range": {"x": (-1.2, 1.2), "y": (-1.2, 1.2)}},
 ]
 
 # Failed-recovery backstop: continuously fallen this long → terminate/reset.
@@ -884,7 +896,7 @@ MicroduckVelStandRlCfg = RslRlOnPolicyRunnerCfg(
     ),
     wandb_project="mjlab_microduck",
     experiment_name="velstand",
-    run_name="velstand",
+    run_name="velstand_kp120",
     save_interval=250,
     num_steps_per_env=24,
     max_iterations=6_000,

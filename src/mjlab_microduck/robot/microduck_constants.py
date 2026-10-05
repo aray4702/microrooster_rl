@@ -159,12 +159,13 @@ FULL_COLLISION = CollisionCfg(
 #   - vin_range: per-env battery voltage sampled at startup (replaces fixed vin)
 #   - vin_drop_gain_range: load-dependent voltage sag V_drop = gain * sum(|tau|)
 #   - vin_min: hard floor on the effective voltage after sag
-# kp_fw kept at 200 (microduck's preserved firmware stiffness; microban uses 125).
+# kp_fw 120 (branch velstand_kp120, 2026-10-05: softer servos; was microduck's preserved
+# firmware stiffness 200; microban uses 125). The robot's Dynamixel P-gain register must match.
 _BAM_ACTUATOR_KWARGS = dict(
     motor_name="xl330",
     model="m6",
     target_names_expr=(r"^(?!passive_).*",),
-    kp_fw=200.0,  # microduck's preserved firmware stiffness (microban uses 125)
+    kp_fw=120.0,  # was 200 (microduck's preserved firmware stiffness); microban uses 125
     # vin_range=(6.9, 7.9),
     vin_range=(6.5, 8.2),
     vin_drop_gain_range=(0.0, 0.2),

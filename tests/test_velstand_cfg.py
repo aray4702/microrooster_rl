@@ -253,8 +253,12 @@ def test_smoothness_costs_are_fallen_scaled():
         assert term.weight < 0
         assert 0.0 < term.params["fallen_scale"] < 1.0
         assert term.params["gate_tilt_above_deg"] == vs.REWARD_GATE_TILT_DEG
-    # the walk's full action_rate weight is still what the loaded policy was trained with
-    assert cfg.rewards["action_rate_l2"].weight == -1.0
+    if vs.WARM_START:
+        # the walk's full action_rate weight is still what the loaded policy was trained with
+        assert cfg.rewards["action_rate_l2"].weight == -1.0
+    else:
+        # from scratch: the velocity recipe's smoothness curriculum ramps from ~0
+        assert len(cfg.curriculum["action_rate_weight"].params["weight_stages"]) > 1
 
 
 def test_prone_init_has_side_spawns():
@@ -444,7 +448,10 @@ def test_body_control_wired():
     assert cfg.rewards["upright"].func.__name__ == "upright_body_cmd_relative" and cfg.rewards["upright"].weight == 2.0
     assert cfg.rewards["pose"].func.__name__ == "variable_posture_body_relaxed"
     bc = vs.MicroduckVelStandRlCfg.algorithm.bc_cfg
-    assert tuple(bc["body_slice"]) == (55, 61) and tuple(bc["body_no_teacher_axes"]) == (2,)
+    if vs.ENABLE_EXPERT_BC:
+        assert tuple(bc["body_slice"]) == (55, 61) and tuple(bc["body_no_teacher_axes"]) == (2,)
+    else:
+        assert bc is None
 
 
 def test_turn_in_place_mask():

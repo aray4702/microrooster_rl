@@ -33,7 +33,7 @@ MICRODUCK_BALL_XML = "src/mjlab_microduck/robot/microduck/scene_ball.xml"
 # tests/test_infer_policy_bam.py.
 BAM_MOTOR_NAME = "xl330"
 BAM_MODEL = "m6"
-BAM_KP_FW = 200.0                 # microduck's preserved firmware stiffness
+BAM_KP_FW = 120.0                 # = microduck_constants kp_fw (was 200 before velstand_kp120)
 BAM_VIN_RANGE = (6.5, 8.2)        # per-env battery voltage DR in training
 BAM_VIN_DROP_GAIN_RANGE = (0.0, 0.2)  # load-dependent sag V_drop = gain * sum|tau|
 BAM_VIN_MIN = 6.0                 # floor on effective voltage after sag
