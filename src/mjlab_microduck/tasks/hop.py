@@ -1284,6 +1284,14 @@ def apply_hop_corrections(
                 term.params["body_weight_n"] = w
                 patched.append(name)
         if patched:
+            # The stiffness is announced because the TASK IDs still say K3344,
+            # which has been a historical label since 2026-10-02 rather than the
+            # stiffness: the load-cell bench put the boot at 4290 N/m. Renaming
+            # 47 references across nine files was judged worse churn than a name
+            # that no longer matches, but a silently wrong number in a name is
+            # exactly the failure this campaign keeps hitting, so it says so.
+            print(f"  [hop] spring k={K_MEASURED:.0f} N/m "
+                  f"(task IDs say K3344 -- historical label, not the stiffness)")
             print(f"  [hop] body weight {w:.3f} N "
                   f"({sum(model.body_mass)*1000:.1f} g) -> {', '.join(patched)}")
     except Exception as exc:  # noqa: BLE001 - never block registration on this
