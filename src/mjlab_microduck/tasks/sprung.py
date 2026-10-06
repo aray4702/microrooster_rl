@@ -28,6 +28,7 @@ from mjlab_microduck.robot.sprung_foot import (
     H_ADD,
     PAD_MASS,
     SOLE_LENGTH_V1,
+    SOLE_WIDTH_V1,
     SPRING_JOINTS,
     TRAVEL,
     make_sprung_foot_robot_cfg,
@@ -49,6 +50,7 @@ def make_sprung_variant(
     h_add: float = H_ADD,
     pad_mass: float = PAD_MASS,
     sole_length: float = SOLE_LENGTH_V1,
+    sole_width: float = SOLE_WIDTH_V1,
 ) -> ManagerBasedRlEnvCfg:
     """Convert a Run-task env cfg into its sprung-foot counterpart."""
     # 1. Robot.
@@ -57,6 +59,7 @@ def make_sprung_variant(
         "robot": make_sprung_foot_robot_cfg(
             stiffness=stiffness, travel=travel, h_add=h_add, pad_mass=pad_mass,
             sole_length=sole_length,
+            sole_width=sole_width,
         ),
     }
 

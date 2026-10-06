@@ -261,7 +261,19 @@ SOLE_OFFSET_LATERAL = -0.0147
 # named lengths because the two boots coexist -- one on the robot, one on the
 # printer -- and a policy is trained for one of them.
 SOLE_LENGTH_V1 = 0.025
-SOLE_LENGTH_V2 = 0.050
+SOLE_LENGTH_V2 = 0.055      # MEASURED on the printed boot 2026-10-06 (was 0.050)
+
+# Lateral sole WIDTH, which until 2026-10-06 was a single hard-coded 40 mm for
+# both versions. Steve measured the V2 boot at 55 x 30 mm, so the model was
+# 5 mm short fore-aft and 10 mm TOO WIDE laterally. The width matters more: it
+# is the roll axis, where this robot has the least margin and where the stance
+# fix had already narrowed things.
+#
+# The real sole carries a further ~10 mm tab on the width that Steve judged not
+# load-bearing; it is deliberately not modelled, so the footprint here is the
+# conservative one.
+SOLE_WIDTH_V1 = 0.040
+SOLE_WIDTH_V2 = 0.030
 
 # The V2 boot weighs 56 g (measured 2026-09-08) against V1's 69 g, so its delta
 # over the 18 g standard pad is 38 g, not 51. Robot total with V2 boots: ~866 g.
@@ -277,6 +289,7 @@ def make_sprung_foot_spec_fn(
     preload: float = SPRING_PRELOAD,
     damping_ratio: float = DAMPING_RATIO,
     sole_length: float = SOLE_LENGTH_V1,
+    sole_width: float = SOLE_WIDTH_V1,
 ) -> Callable[[], mujoco.MjSpec]:
     """Build a zero-argument ``spec_fn`` for a sprung-foot MicroDuck.
 
@@ -387,7 +400,7 @@ def make_sprung_foot_spec_fn(
                 # penetration difference between mesh sole and box pad, and
                 # penetration depends on contact PRESSURE, so a longer sole sits
                 # ~1-2 mm higher than the 30 mm H_ADD target until re-tuned.
-                size=[sole_length / 2.0, _PAD_HALF_EXTENTS[1], _PAD_HALF_EXTENTS[2]],
+                size=[sole_length / 2.0, _PAD_HALF_EXTENTS[1], sole_width / 2.0],
                 pos=[0.0, 0.0, 0.0],
                 mass=pad_mass,
             )
@@ -413,7 +426,7 @@ def make_sprung_foot_spec_fn(
             pad.add_geom(
                 name=f"{side}_sole_visual",
                 type=mujoco.mjtGeom.mjGEOM_BOX,
-                size=[sole_length / 2.0, _PAD_HALF_EXTENTS[1], _PAD_HALF_EXTENTS[2]],
+                size=[sole_length / 2.0, _PAD_HALF_EXTENTS[1], sole_width / 2.0],
                 pos=[0.0, 0.0, 0.0],
                 contype=0, conaffinity=0, mass=0.0, group=2,
                 rgba=[0.15, 0.15, 0.18, 1.0],
@@ -455,6 +468,7 @@ def make_sprung_foot_robot_cfg(
     pad_mass: float = PAD_MASS,
     preload: float = SPRING_PRELOAD,
     sole_length: float = SOLE_LENGTH_V1,
+    sole_width: float = SOLE_WIDTH_V1,
 ) -> EntityCfg:
     """EntityCfg for a sprung-foot MicroDuck, spawned h_add higher.
 
@@ -470,6 +484,7 @@ def make_sprung_foot_robot_cfg(
         spec_fn=make_sprung_foot_spec_fn(
             stiffness, travel, damping, h_add, pad_mass, preload,
             sole_length=sole_length,
+            sole_width=sole_width,
         ),
         init_state=init_state,
         collisions=(FULL_COLLISION,),

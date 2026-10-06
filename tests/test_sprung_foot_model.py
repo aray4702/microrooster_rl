@@ -371,3 +371,35 @@ def test_the_boot_hangs_under_the_foot_sole_not_the_ankle_axis():
     assert stance == pytest.approx(0.0996, abs=0.004), (
         f"stance {stance:.4f} m; the real robot's soles are 0.0975 m apart"
     )
+
+
+def test_the_v2_boot_footprint_matches_the_measured_sole():
+    """55 x 30 mm, measured on the printed boot 2026-10-06.
+
+    The model carried 50 x 40: 5 mm short fore-aft and 10 mm too wide laterally.
+    Width was a single hard-coded constant shared by both boot versions until
+    this was caught, and it is the roll axis, where the robot has least margin.
+    The real sole has a further ~10 mm tab on the width that Steve judged not
+    load-bearing; it is deliberately excluded, so this footprint is the
+    conservative one.
+    """
+    import mujoco
+
+    from mjlab_microduck.robot.sprung_foot import (
+        K_MEASURED,
+        SOLE_LENGTH_V2,
+        SOLE_WIDTH_V2,
+        make_sprung_foot_spec_fn,
+    )
+
+    assert SOLE_LENGTH_V2 == pytest.approx(0.055)
+    assert SOLE_WIDTH_V2 == pytest.approx(0.030)
+
+    m = make_sprung_foot_spec_fn(
+        stiffness=K_MEASURED, sole_length=SOLE_LENGTH_V2, sole_width=SOLE_WIDTH_V2
+    )().compile()
+    for side in ("left", "right"):
+        gid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, f"{side}_foot_collision")
+        half = m.geom_size[gid]
+        assert half[0] == pytest.approx(SOLE_LENGTH_V2 / 2), "fore-aft half-extent"
+        assert half[2] == pytest.approx(SOLE_WIDTH_V2 / 2), "lateral half-extent"

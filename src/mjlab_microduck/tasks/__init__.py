@@ -94,7 +94,16 @@ from .hop import (
     make_true_hop_variant,
     make_symmetric_variant,
 )
-from mjlab_microduck.robot.sprung_foot import H_ADD, K_MEASURED, PAD_MASS, PAD_MASS_V2, SOLE_LENGTH_V2, TRAVEL
+from mjlab_microduck.robot.sprung_foot import (
+    H_ADD,
+    K_MEASURED,
+    PAD_MASS,
+    PAD_MASS_V2,
+    SOLE_LENGTH_V2,
+    SOLE_WIDTH_V1,
+    SOLE_WIDTH_V2,
+    TRAVEL,
+)
 
 # Standard velocity task
 register_mjlab_task(
@@ -370,6 +379,11 @@ for _label, _hp, _hr, _robust, _sole, _act in (
         sprung_kw = dict(stiffness=K_MEASURED, travel=TRAVEL, pad_mass=PAD_MASS, h_add=H_ADD)
         if _sole is not None:
             sprung_kw["sole_length"] = _sole
+            # The two boots differ in width as well as length: V1 is 40 mm,
+            # the printed V2 is 30 mm (measured 2026-10-06).
+            sprung_kw["sole_width"] = (
+                SOLE_WIDTH_V2 if _sole == SOLE_LENGTH_V2 else SOLE_WIDTH_V1
+            )
         if _robust in ("r2", "v2pads"):
             sprung_kw["pad_mass"] = PAD_MASS_V2      # the boot that is on the robot
         if _label.endswith("SymHard"):
