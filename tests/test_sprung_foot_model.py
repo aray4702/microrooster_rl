@@ -335,3 +335,39 @@ def test_pad_local_axes_map_to_fore_aft_and_lateral(model):
     assert abs(rot[0, 0]) == pytest.approx(1.0, abs=0.02), "local x is fore-aft"
     assert abs(rot[2, 1]) == pytest.approx(1.0, abs=0.02), "local y is vertical"
     assert abs(rot[1, 2]) == pytest.approx(1.0, abs=0.02), "local z is lateral"
+
+
+def test_the_boot_hangs_under_the_foot_sole_not_the_ankle_axis():
+    """The pad must sit under the sole it replaces, not under the joint origin.
+
+    It hung from the ankle joint origin until 2026-10-06, which put it 15.7 mm
+    outboard and 6.9 mm aft of the original sole and made the simulated stance
+    129.0 mm wide against the real 97.5 -- 32% too wide, on the axis the robot
+    is least stable on. Every sprung policy in this campaign trained that way.
+    Steve confirmed the real boot sole is centred under the foot sole.
+    """
+    import mujoco
+    import numpy as np
+
+    from mjlab_microduck.robot.sprung_foot import make_sprung_foot_spec_fn
+
+    m = make_sprung_foot_spec_fn()().compile()
+    d = mujoco.MjData(m)
+    mujoco.mj_resetData(m, d)
+    mujoco.mj_forward(m, d)
+
+    for side in ("left", "right"):
+        sole = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, f"{side}_sole_disabled")
+        pad = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, f"{side}_foot_collision")
+        delta = d.geom_xpos[pad] - d.geom_xpos[sole]
+        # Horizontally aligned with the sole; only the vertical drop is intended.
+        assert abs(delta[0]) < 0.003, f"{side} pad is {1000*delta[0]:.1f} mm off fore-aft"
+        assert abs(delta[1]) < 0.003, f"{side} pad is {1000*delta[1]:.1f} mm off laterally"
+        assert delta[2] < -0.02, f"{side} pad should sit well below the old sole"
+
+    lp = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "left_foot_collision")
+    rp = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "right_foot_collision")
+    stance = abs(d.geom_xpos[lp][1]) + abs(d.geom_xpos[rp][1])
+    assert stance == pytest.approx(0.0996, abs=0.004), (
+        f"stance {stance:.4f} m; the real robot's soles are 0.0975 m apart"
+    )

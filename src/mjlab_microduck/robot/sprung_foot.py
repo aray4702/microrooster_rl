@@ -234,6 +234,27 @@ _COLLISION_CLASS = "collision"
 #   local z -> world [ 0.000, 0.996,-0.087]  = lateral
 _PAD_HALF_EXTENTS = (0.0125, 0.004, 0.020)
 
+# WHERE THE BOOT HANGS. Measured 2026-10-06 from the original sole mesh's
+# bounding box in the ankle frame (7896 verts, left; mirrored right):
+# centre (-0.0070, -0.0186, -0.0147), extent 54.0 x 12.9 x 41.1 mm.
+#
+# The boot used to hang from the ANKLE JOINT ORIGIN, which is not where the
+# foot is. That put the pad 15.7 mm outboard and 6.9 mm aft of the sole it
+# replaces, and the simulated stance 129.0 mm wide against the real 97.5 -- 32%
+# too wide, on the very axis the robot is least stable. Every sprung policy in
+# this campaign trained on that. Steve confirmed the real boot sole is centred
+# under the foot sole.
+#
+# Fore-aft is signed per side because the two ankle frames are mirrored: local
+# +x maps to world -x on the left and +x on the right, so a single sign here
+# would move the feet in opposite directions. Lateral is the same for both.
+#
+# The boot's own sole is FLAT and parallel to the foot, which the box already
+# models correctly. The 12.9 mm of thickness in the bbox above is the ORIGINAL
+# sole's curvature -- a property of the part the boot replaces, not of the boot.
+SOLE_OFFSET_FOREAFT = 0.0070    # magnitude; negative on the left, positive on the right
+SOLE_OFFSET_LATERAL = -0.0147
+
 # Fore-aft sole length of the CURRENT prototype, and of the next one. The tip
 # angle at the boot's CoM height is atan(half_length / 150.9 mm): 4.4 deg at
 # 25 mm, which the robot cannot hold passively, 9.1 deg at 50 mm. Kept as
@@ -311,8 +332,12 @@ def make_sprung_foot_spec_fn(
             spec.site(f"{side}_foot").name = f"{side}_foot_old"
             # -y is downward in world at the home pose, so a negative y offset
             # puts the pad below the ankle.
+            # Centred under the foot SOLE, not under the ankle joint origin.
+            # See SOLE_OFFSET_* above for the measurement and what it cost.
+            fore_aft = -SOLE_OFFSET_FOREAFT if side == "left" else SOLE_OFFSET_FOREAFT
             pad = ankle.add_body(
-                name=f"{side}_foot_pad", pos=[0.0, -(ANKLE_TO_SOLE + h_add), 0.0]
+                name=f"{side}_foot_pad",
+                pos=[fore_aft, -(ANKLE_TO_SOLE + h_add), SOLE_OFFSET_LATERAL],
             )
             # travel == 0.0 is the LOCKED control arm: no joint at all, so the
             # pad is a rigid child of the ankle (identical mass and height,
