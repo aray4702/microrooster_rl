@@ -381,6 +381,18 @@ def make_sprung_foot_spec_fn(
             # contype/conaffinity 0 and mass 0, so they are inert: no contacts,
             # no inertia, no effect on the dynamics. `group=2` keeps them on the
             # viewer's visual layer rather than the collision layer.
+            # The CONTACT PAD ITSELF is invisible in the viewer: it lives in
+            # geom group 3, the collision layer, which the viewer hides by
+            # default. So the boot appeared to end in nothing -- "point like".
+            # This twin draws the actual 50 x 40 mm sole on the visual layer.
+            pad.add_geom(
+                name=f"{side}_sole_visual",
+                type=mujoco.mjtGeom.mjGEOM_BOX,
+                size=[sole_length / 2.0, _PAD_HALF_EXTENTS[1], _PAD_HALF_EXTENTS[2]],
+                pos=[0.0, 0.0, 0.0],
+                contype=0, conaffinity=0, mass=0.0, group=2,
+                rgba=[0.15, 0.15, 0.18, 1.0],
+            )
             if travel > 0.0:
                 span = ANKLE_TO_SOLE + h_add
                 ankle.add_geom(
