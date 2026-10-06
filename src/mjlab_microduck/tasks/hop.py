@@ -1332,7 +1332,29 @@ def apply_hop_corrections(
     robot.articulation = dataclasses.replace(
         robot.articulation, actuators=tuple(new_acts)
     )
+        # NOMINAL PLANT for inspection. Applied HERE, the last transform in the
+    # chain, because make_hop_sim2real_variant adds its randomisation after
+    # make_hop_variant runs -- stripping earlier silently missed motor gains
+    # and both spring terms.
+    #
+    # HOP_NO_PUSH removes the shoves, but every reset still redraws motor gains
+    # (x0.8-1.8), foot-spring damping (x1-2) and stiffness, joint friction,
+    # armature, CoM offsets and encoder bias. That is correct for training and
+    # misleading in a viewer: with --num-envs 1 you are watching ONE draw, so a
+    # gait can look unstable because it got gains at 1.8 rather than because it
+    # is unstable. HOP_NO_DR keeps only the events the env needs to run.
+    if os.environ.get("HOP_NO_DR"):
+        keep = {"reset_base", "reset_robot_joints", "reset_action_history",
+                "expand_bam_friction_fields"}
+        dropped = [k for k in list(cfg.events.keys()) if k not in keep]
+        for k in dropped:
+            cfg.events.pop(k, None)
+        if dropped:
+            print(f"  [hop] HOP_NO_DR set -> {len(dropped)} randomisation events REMOVED "
+                  f"(inspection only; do NOT train like this)")
     return cfg
+
+
 
 
 def hop_rl_cfg(label: str):
