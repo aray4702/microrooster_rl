@@ -7669,3 +7669,332 @@ def roulade_lateral_velocity_penalty(
     """Body-frame lateral (y) linear velocity² — keeps the roll straight."""
     asset: Entity = env.scene[asset_cfg.name]
     return torch.nan_to_num(asset.data.root_link_lin_vel_b[:, 1].pow(2), nan=0.0)
+
+
+# ==============================================================================
+# OneLegStand: commanded two feet ↔ one foot, either side
+# ==============================================================================
+# cmd (twist slot) = [flag, side, 0]: flag 0 = two feet (all-zero = deployment
+# idle, like sitstand), flag 1 = stand on one foot; side +1 = RIGHT foot down
+# (lift the left), -1 = LEFT foot down (lift the right) — the community
+# flamingo convention. Same machinery as SitStandCommand: dwell-time
+# resampling + a SLEWED internal blend ``alpha`` (0 = two feet, 1 = fully on
+# one foot) that the rewards track, so lifting early pays nothing (no
+# jackpot) and the obs stays the raw command.
+#
+# No keyframe: there is no ankle-roll joint, so a one-foot stance needs ~25-30°
+# of trunk roll about the stance hip + head counterweight (kinematic search,
+# 2026-10-06) — the rewards specify the OUTCOME (swing foot up, CoM over the
+# stance sole, only the stance foot on the ground) and RL finds the pose.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def ols_slew(
+    alpha: torch.Tensor,
+    active_side: torch.Tensor,
+    flag: torch.Tensor,
+    side: torch.Tensor,
+    step: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """One slew step of the OneLegStand blend. Returns (alpha, active_side).
+
+    A new side is adopted only once alpha is back at 0 (both feet down); while
+    the commanded side differs from the active one, alpha ramps DOWN first.
+    """
+    adopt = (alpha <= 0.0) & (flag > 0.5)
+    active_side = torch.where(adopt, side, active_side)
+    want = torch.where(side == active_side, flag, torch.zeros_like(flag))
+    alpha = torch.clamp(alpha + torch.clamp(want - alpha, -step, step), 0.0, 1.0)
+    return alpha, active_side
+
+
+class OneLegStandCommand(UniformVelocityCommand):
+    """Posture command [flag, side, 0] with a slewed blend toward the active side.
+
+    ``alpha`` slews at 1/ramp_s toward ``flag`` — but only while the commanded
+    side matches the ``active_side`` currently in the air: a side switch first
+    ramps alpha back to 0 (both feet down), then adopts the new side. So the
+    rewards always know WHICH foot the target refers to, including on the way
+    back down after the flag drops to 0 (side becomes 0 in the obs).
+    """
+
+    def __init__(self, cfg, env: ManagerBasedRlEnv):
+        super().__init__(cfg, env)
+        self._one_leg_prob = float(getattr(cfg, "one_leg_prob", 0.6))
+        self._ramp_s = float(getattr(cfg, "ramp_s", 1.5))
+        self._sides = tuple(getattr(cfg, "sides", (-1.0, 1.0)))
+        self._env_ref = env
+        self._alpha = torch.zeros(self.num_envs, device=self.device)
+        self._active_side = torch.zeros(self.num_envs, device=self.device)
+
+    @property
+    def command(self) -> torch.Tensor:
+        return self.vel_command_b
+
+    @property
+    def alpha(self) -> torch.Tensor:
+        """Slewed blend: 0 = two feet, 1 = fully on one foot (active_side)."""
+        return self._alpha
+
+    @property
+    def active_side(self) -> torch.Tensor:
+        """+1 = right foot is the stance foot, -1 = left, 0 = none yet."""
+        return self._active_side
+
+    def _resample_command(self, env_ids: torch.Tensor) -> None:
+        n = len(env_ids)
+        if n == 0:
+            return
+        one = (torch.rand(n, device=self.device) < self._one_leg_prob).float()
+        sides = torch.tensor(self._sides, device=self.device)
+        side = sides[torch.randint(len(self._sides), (n,), device=self.device)]
+        self.vel_command_b[env_ids] = 0.0
+        self.vel_command_b[env_ids, 0] = one
+        self.vel_command_b[env_ids, 1] = side * one
+
+    def compute(self, dt: float) -> None:
+        super().compute(dt)
+        # Every episode spawns on two feet: start the blend at 0.
+        fresh = self._env_ref.episode_length_buf <= 1
+        if fresh.any():
+            self._alpha = torch.where(fresh, torch.zeros_like(self._alpha), self._alpha)
+            self._active_side = torch.where(fresh, torch.zeros_like(self._active_side), self._active_side)
+        self._alpha, self._active_side = ols_slew(
+            self._alpha, self._active_side,
+            self.vel_command_b[:, 0], self.vel_command_b[:, 1],
+            dt / max(self._ramp_s, 1e-6),
+        )
+
+    def _update_command(self) -> None:
+        pass
+
+    def _update_metrics(self) -> None:
+        pass
+
+
+@_dataclass(kw_only=True)
+class OneLegStandCommandCfg(UniformVelocityCommandCfg):
+    class_type: type = OneLegStandCommand
+    # Probability a resample commands one-foot (vs two feet).
+    one_leg_prob: float = 0.6
+    # Seconds for the blend to go two feet → fully on one foot.
+    ramp_s: float = 1.5
+    # Allowed side values (+1 = right foot down, -1 = left foot down).
+    sides: tuple = (-1.0, 1.0)
+
+    def build(self, env: ManagerBasedRlEnv) -> "OneLegStandCommand":
+        return OneLegStandCommand(self, env)
+
+
+def _ols_state(env: ManagerBasedRlEnv, command_name: str) -> tuple[torch.Tensor, torch.Tensor]:
+    """(alpha, active_side) of the OneLegStandCommand."""
+    term = env.command_manager.get_term(command_name)
+    return term.alpha, term.active_side
+
+
+def _ols_feet(env: ManagerBasedRlEnv, asset: Entity) -> tuple[torch.Tensor, torch.Tensor]:
+    """(left, right) foot-site world positions, each (N, 3). The sites sit on
+    the sole, under its centre (z ≈ 0 when standing on flat ground)."""
+    if not hasattr(env, "_ols_foot_site_ids"):
+        ids, _ = asset.find_sites(("left_foot", "right_foot"), preserve_order=True)
+        env._ols_foot_site_ids = ids
+    pos = asset.data.site_pos_w[:, env._ols_foot_site_ids]
+    return pos[:, 0], pos[:, 1]
+
+
+def _ols_lift_targets(
+    env: ManagerBasedRlEnv, command_name: str, lift_height: float, shift_frac: float
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Per-foot target sole height (left, right) and the CoM-shift blend.
+
+    The first ``shift_frac`` of the ramp is the weight shift (CoM moves over
+    the stance foot, both feet still down); the rest lifts the swing foot
+    linearly to ``lift_height``.
+    """
+    alpha, side = _ols_state(env, command_name)
+    shift = torch.clamp(alpha / max(shift_frac, 1e-6), 0.0, 1.0)
+    lift = lift_height * torch.clamp((alpha - shift_frac) / max(1.0 - shift_frac, 1e-6), 0.0, 1.0)
+    # side +1 = right foot down → the LEFT foot is lifted.
+    tgt_l = torch.where(side > 0, lift, torch.zeros_like(lift))
+    tgt_r = torch.where(side < 0, lift, torch.zeros_like(lift))
+    return tgt_l, tgt_r, shift
+
+
+def _ols_foot_heights(env: ManagerBasedRlEnv, asset: Entity) -> tuple[torch.Tensor, torch.Tensor]:
+    left, right = _ols_feet(env, asset)
+    oz = env.scene.terrain.env_origins[:, 2]
+    hl = torch.nan_to_num(left[:, 2] - oz, nan=0.0).clamp(min=0.0)
+    hr = torch.nan_to_num(right[:, 2] - oz, nan=0.0).clamp(min=0.0)
+    return hl, hr
+
+
+def ols_foot_height_track(
+    env: ManagerBasedRlEnv,
+    command_name: str,
+    lift_height: float,
+    shift_frac: float,
+    std: float = 0.015,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """Mean over both feet of exp(-((h - h_target)/std)²) vs the slewed target.
+
+    Two feet: both targets 0 (feet planted). One foot: the swing foot tracks the
+    ramp, the stance foot stays at 0. Lifting AHEAD of the ramp scores less
+    than tracking it, so there is no early-arrival jackpot.
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    tl, tr, _ = _ols_lift_targets(env, command_name, lift_height, shift_frac)
+    hl, hr = _ols_foot_heights(env, asset)
+    return 0.5 * (torch.exp(-((hl - tl) / std) ** 2) + torch.exp(-((hr - tr) / std) ** 2))
+
+
+def ols_foot_height_l1(
+    env: ManagerBasedRlEnv,
+    command_name: str,
+    lift_height: float,
+    shift_frac: float,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """-(|h_l - t_l| + |h_r - t_r|): constant-gradient companion (≤ 0 →
+    POSITIVE weight). Makes 'ignore the flag, keep both feet down' a steady
+    per-step cost of ~lift_height."""
+    asset: Entity = env.scene[asset_cfg.name]
+    tl, tr, _ = _ols_lift_targets(env, command_name, lift_height, shift_frac)
+    hl, hr = _ols_foot_heights(env, asset)
+    return -(torch.abs(hl - tl) + torch.abs(hr - tr))
+
+
+def _ols_com_error(
+    env: ManagerBasedRlEnv, asset: Entity, command_name: str, lift_height: float, shift_frac: float
+) -> torch.Tensor:
+    """Horizontal distance (m) between the whole-body CoM and its slewed target:
+    the mid-feet point on two feet, moving onto the stance sole centre over the
+    weight-shift part of the ramp."""
+    left, right = _ols_feet(env, asset)
+    _, side = _ols_state(env, command_name)
+    _, _, shift = _ols_lift_targets(env, command_name, lift_height, shift_frac)
+    mid = 0.5 * (left[:, :2] + right[:, :2])
+    stance = torch.where((side > 0).unsqueeze(-1), right[:, :2], left[:, :2])
+    target = mid + shift.unsqueeze(-1) * (stance - mid)
+    com = asset.data.data.subtree_com[:, asset.data.indexing.root_body_id, :2]
+    return torch.nan_to_num((com - target).norm(dim=-1), nan=1.0)
+
+
+def ols_com_over_support(
+    env: ManagerBasedRlEnv,
+    command_name: str,
+    lift_height: float,
+    shift_frac: float,
+    std: float = 0.02,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """exp(-(d/std)²) on the whole-body CoM vs its slewed support target."""
+    asset: Entity = env.scene[asset_cfg.name]
+    d = _ols_com_error(env, asset, command_name, lift_height, shift_frac)
+    return torch.exp(-((d / std) ** 2))
+
+
+def _ols_tilt_cos(asset: Entity) -> torch.Tensor:
+    q = asset.data.root_link_quat_w
+    return 1.0 - 2.0 * (q[:, 1] ** 2 + q[:, 2] ** 2)
+
+
+def ols_composite(
+    env: ManagerBasedRlEnv,
+    command_name: str,
+    lift_height: float,
+    shift_frac: float,
+    foot_std: float = 0.015,
+    com_std: float = 0.02,
+    upright_std: float = 0.6,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """Multiplicative goal score: feet-at-target · CoM-over-support · upright.
+
+    Product (not sum) so partial compromises — foot up but CoM outside the sole
+    (a fall in progress), CoM over the stance foot with both feet still down
+    ('lean and ignore the flag') — score ~0. The upright factor is WIDE
+    (std 0.6 on 2(x²+y²) ≈ sin²-ish, i.e. ~30° keeps ~0.8): a one-foot stance
+    on this robot REQUIRES ~25-30° trunk roll (no ankle roll joint).
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    tl, tr, _ = _ols_lift_targets(env, command_name, lift_height, shift_frac)
+    hl, hr = _ols_foot_heights(env, asset)
+    feet = torch.exp(-((hl - tl) / foot_std) ** 2) * torch.exp(-((hr - tr) / foot_std) ** 2)
+    d = _ols_com_error(env, asset, command_name, lift_height, shift_frac)
+    com = torch.exp(-((d / com_std) ** 2))
+    tilt_sq = 1.0 - _ols_tilt_cos(asset)  # = 2(x²+y²)
+    upright = torch.exp(-tilt_sq / (upright_std * upright_std))
+    return feet * com * upright
+
+
+def ols_stillness(
+    env: ManagerBasedRlEnv,
+    command_name: str,
+    lift_height: float,
+    shift_frac: float,
+    vel_std: float = 0.05,
+    foot_tol: float = 0.01,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """Trunk-velocity Gaussian, paid only at a COMPLETED posture: ramp done
+    (alpha == flag) and both feet within ``foot_tol`` of their targets. Standing
+    still on two feet under a one-foot command earns nothing."""
+    asset: Entity = env.scene[asset_cfg.name]
+    alpha, _ = _ols_state(env, command_name)
+    flag = env.command_manager.get_command(command_name)[:, 0]
+    tl, tr, _ = _ols_lift_targets(env, command_name, lift_height, shift_frac)
+    hl, hr = _ols_foot_heights(env, asset)
+    done = ((flag - alpha).abs() < 0.02) & ((hl - tl).abs() < foot_tol) & ((hr - tr).abs() < foot_tol)
+    v = torch.nan_to_num(asset.data.root_link_lin_vel_w, nan=0.0).norm(dim=-1)
+    return torch.exp(-((v / vel_std) ** 2)) * done.float()
+
+
+def ols_two_feet_pose(
+    env: ManagerBasedRlEnv,
+    command_name: str,
+    joint_indices: list,
+    std: float = 0.3,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """HOME Gaussian on the legs, weighted by (1 - alpha): pins the two-feet
+    rest to the deployed standing pose, fades out entirely on one foot (no
+    one-foot keyframe — RL finds that pose)."""
+    asset: Entity = env.scene[asset_cfg.name]
+    alpha, _ = _ols_state(env, command_name)
+    q = _servo_joint_pos(env, asset)[:, joint_indices]
+    q0 = _servo_default_joint_pos(env, asset)[:, joint_indices]
+    return torch.exp(-((q - q0) / std) ** 2).mean(dim=-1) * (1.0 - alpha)
+
+
+def ols_head_pose_tracking(
+    env: ManagerBasedRlEnv,
+    command_name: str,
+    head_command_name: str = "head_pose",
+    std: float = 0.5,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """head_pose_tracking × (1 - alpha): the head is commandable on two feet and
+    FREE on one foot, where it is the main lateral counterweight."""
+    alpha, _ = _ols_state(env, command_name)
+    return head_pose_tracking(env, head_command_name, std, asset_cfg=asset_cfg) * (1.0 - alpha)
+
+
+def ols_non_foot_ground_contact(
+    env: ManagerBasedRlEnv,
+    sensor_name: str,
+) -> torch.Tensor:
+    """1 while any non-foot body touches the ground (cost → NEGATIVE weight).
+    Blocks knee/head/trunk tripods on the all-collisions model."""
+    hit = _sensor_any_contact(env, sensor_name)
+    if hit is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    return hit.float()
+
+
+def ols_command_state(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
+    """(alpha, active_side) — CRITIC-ONLY privileged obs. The actor sees only the
+    raw flag/side (deployment parity); the critic needs the slewed internal
+    target the rewards track to predict their value."""
+    alpha, side = _ols_state(env, command_name)
+    return torch.stack([alpha, side], dim=-1)

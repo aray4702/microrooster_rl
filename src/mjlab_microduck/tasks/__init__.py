@@ -75,6 +75,10 @@ from .microduck_roulade_env_cfg import (
     make_microduck_roulade_env_cfg,
     MicroduckRouladeRlCfg,
 )
+from .microduck_one_leg_stand_env_cfg import (
+    make_microduck_one_leg_stand_env_cfg,
+    MicroduckOneLegStandRlCfg,
+)
 from .backlash import make_backlash_variant
 
 # Standard velocity task
@@ -142,6 +146,15 @@ register_mjlab_task(
     env_cfg=make_microduck_sitstand_env_cfg(rough=True),
     play_env_cfg=make_microduck_sitstand_env_cfg(play=True, rough=True),
     rl_cfg=MicroduckSitStandRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# OneLegStand task — commanded two feet ↔ one foot (either side), all-collisions model
+register_mjlab_task(
+    task_id="Mjlab-OneLegStand-Flat-MicroDuck",
+    env_cfg=make_microduck_one_leg_stand_env_cfg(),
+    play_env_cfg=make_microduck_one_leg_stand_env_cfg(play=True),
+    rl_cfg=MicroduckOneLegStandRlCfg,
     runner_cls=MicroduckOnPolicyRunner,
 )
 
