@@ -11,6 +11,7 @@ from mjlab_microduck.tasks.mdp import (
     hop_both_feet_airborne,
     hop_energy_monitor,
     hop_load_force,
+    hop_mean_airtime,
     hop_symmetric_push,
     hop_upward_velocity,
 )
@@ -83,6 +84,7 @@ class _Env:
         self.num_envs = len(found)
         self.device = "cpu"
         self.extras = {"log": {}}
+        self.step_dt = 0.02
 
     def step(self, found=None, z=None, cmd=None):
         """Advance one step, mutating only the fields the terms read.
@@ -1111,3 +1113,79 @@ def test_symmetric_push_does_not_exceed_one_when_both_feet_slam():
     out = hop_symmetric_push(env, sensor_name=_SENSOR, command_name=_CMD,
                              body_weight_n=_BW)
     assert abs(float(out[0]) - 1.0) < 1e-6
+
+
+# --- hop_mean_airtime -------------------------------------------------------
+#
+# THE OBJECTIVE IS AIRTIME, NOT HEIGHT (Steve, 2026-10-06: "the goal here is not
+# to jump high but just to hop in place ... the absolute real constraint is the
+# airtime of the feet"). The term pays the FLIGHT DURATION of each hop, once, at
+# touchdown. That makes it rate-neutral by construction -- ten 50 ms hops and
+# five 100 ms hops earn the same per second -- which is the whole point: the
+# clamped-height term it replaces capped quality at 1 and left RATE the only
+# uncapped axis, and the policy duly converged on a 6.2 Hz buzz.
+
+_ENABLED = [[0.0, 1.0, 1.0]]    # slot 2 is the hop-enable bit
+_DISABLED = [[0.0, 1.0, 0.0]]
+
+
+def _airtime_term(env):
+    return hop_mean_airtime(cfg=None, env=env)
+
+
+def _fly(term, env, steps, cmd=None):
+    """planted -> `steps` airborne -> planted. Returns the payout at touchdown."""
+    term(env.step(found=_PLANTED, cmd=cmd), command_name=_CMD)
+    for _ in range(steps):
+        term(env.step(found=_AIRBORNE), command_name=_CMD)
+    return float(term(env.step(found=_PLANTED), command_name=_CMD)[0])
+
+
+def test_mean_airtime_pays_the_flight_duration_once_at_touchdown():
+    env = _Env(found=_PLANTED, cmd=_ENABLED)
+    term = _airtime_term(env)
+    assert abs(_fly(term, env, 5) - 0.10) < 1e-6      # 5 steps x 20 ms
+
+
+def test_mean_airtime_pays_nothing_while_still_airborne():
+    """Paying per step would be total airtime, which still rewards shrinking the
+    contact phase. The payment lands once, when the flight is over and its
+    duration is known."""
+    env = _Env(found=_PLANTED, cmd=_ENABLED)
+    term = _airtime_term(env)
+    term(env, command_name=_CMD)
+    for _ in range(4):
+        assert float(term(env.step(found=_AIRBORNE), command_name=_CMD)[0]) == 0.0
+
+
+def test_mean_airtime_is_rate_neutral():
+    """Two 100 ms hops pay exactly what four 50 ms hops pay. Doubling the
+    frequency at constant airtime fraction buys nothing -- that is the property
+    the clamped-height term lacked."""
+    env = _Env(found=_PLANTED, cmd=_ENABLED)
+    slow = _airtime_term(env)
+    slow_total = sum(_fly(slow, env, 5) for _ in range(2))
+    env2 = _Env(found=_PLANTED, cmd=_ENABLED)
+    fast = _airtime_term(env2)
+    fast_total = sum(_fly(fast, env2, 3) for _ in range(4))   # 60 ms each
+    assert abs(slow_total - 0.20) < 1e-6
+    assert abs(fast_total - 0.24) < 1e-6
+    # A longer hop pays strictly more per hop, which is the only axis left.
+    assert _fly(slow, env, 10) > _fly(fast, env2, 3)
+
+
+def test_mean_airtime_rejects_a_one_step_flicker():
+    """min_air_s prices out a 20 ms blip -- a single control step of contact
+    loss is the spring unloading, not a hop."""
+    env = _Env(found=_PLANTED, cmd=_ENABLED)
+    term = _airtime_term(env)
+    assert _fly(term, env, 1) == 0.0
+    assert abs(_fly(term, env, 2) - 0.04) < 1e-6      # exactly at the gate
+
+
+def test_mean_airtime_pays_nothing_when_the_hop_was_not_commanded():
+    """Hopping while asked to stand earns nothing: the bit is read at TAKEOFF,
+    so a policy cannot bounce first and have the command arrive later."""
+    env = _Env(found=_PLANTED, cmd=_DISABLED)
+    term = _airtime_term(env)
+    assert _fly(term, env, 5) == 0.0

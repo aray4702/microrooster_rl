@@ -1184,13 +1184,17 @@ def test_hopfree_pays_per_landing_and_gates_on_the_enable_bit():
     free = load_env_cfg("Mjlab-HopFree-S50-Sym-K3344-MicroDuck")
     sym = load_env_cfg("Mjlab-HopSym-S50-Sym-K3344-MicroDuck")
 
-    assert "hop_landing_height" in free.rewards
+    assert "hop_mean_airtime" in free.rewards
+    assert "hop_landing_height" not in free.rewards
     assert "hop_both_feet_airborne" not in free.rewards
     assert "hop_body_height" not in free.rewards
-    lh = free.rewards["hop_landing_height"]
-    assert lh.weight == 40.0
-    assert lh.params["target_gain"] == 0.030
-    assert lh.params["height_source"] == "com"
+    # Pays the MEAN FLIGHT DURATION per landing. No target, no clamp, no datum:
+    # the clamped-height term it replaces capped quality at 1 and left RATE the
+    # only uncapped axis, which bought a 6.2 Hz buzz with 4.8 mm of rise.
+    at = free.rewards["hop_mean_airtime"]
+    assert at.weight == 80.0
+    assert "target_gain" not in at.params and "height_source" not in at.params
+    assert at.params.get("min_air_s", 0.04) == 0.04
     # Both dense terms read the enable bit, not the sin/cos halves.
     assert free.rewards["hop_upward_velocity"].params["gate"] == "enable"
     assert free.rewards["hop_load_force"].params["gate"] == "enable"
@@ -1306,7 +1310,7 @@ def test_hopfree_dr_adds_the_robustness_stack_without_touching_the_hop_reward():
         assert jn == [r"^passive_.*_foot_spring$"], (name, jn)
 
     # The hop reward is untouched -- this arm changes the plant, not the goal.
-    for name in ("hop_landing_height", "hop_upward_velocity", "hop_load_force"):
+    for name in ("hop_mean_airtime", "hop_upward_velocity", "hop_load_force"):
         assert dr.rewards[name].weight == base.rewards[name].weight, name
         assert dr.rewards[name].params == base.rewards[name].params, name
     assert dr.commands["twist"].enable_bit is True

@@ -7530,6 +7530,117 @@ def joint_limit_proximity(
     return -torch.sum(torch.square(over), dim=1)
 
 
+class hop_mean_airtime:
+    """Pay the MEAN FLIGHT DURATION of each hop, once per landing.
+
+    THE OBJECTIVE IS AIRTIME, NOT HEIGHT. Steve: "the goal here is not to jump
+    high but just to hop in place ... the absolute real constraint is the
+    airtime of the feet". Height is a welcome by-product, and crouching low to
+    get airtime is fine.
+
+    WHY MEAN PER HOP AND NOT TOTAL. Three candidates were compared against the
+    two hacks, normalised to the gait this replaces (4.8 mm hop, 60 ms contact):
+
+                                   clamped height   total airtime   mean airtime
+      same hop, contact 60 -> 10 ms     1.69x            1.69x           1.00x
+      hop 4.8 -> 30 mm                  3.54x            1.42x           2.50x
+
+    The term being replaced paid `min(gain/30mm, 1)` per landing, which caps
+    quality at 1 and leaves RATE as the only uncapped axis: measured at quality
+    0.59, doubling the height could earn 1.69x while doubling the frequency
+    earned 2x. The policy duly converged on a 6.2 Hz buzz with 4.8 mm of
+    ballistic rise -- "looks more like a vibration". Total airtime is better but
+    still rewards shrinking the contact phase, 1.69x for no extra hop. The mean
+    flight duration per hop is moved by NOTHING except hopping higher.
+
+    THE CONTACT SENSOR IS THE RIGHT SIGNAL, and I claimed otherwise twice. The
+    worry was that a spring-loaded pad unloads before it leaves the floor, so
+    flight would read long. It does not: the flight time it reports matches
+    ballistics once you account for landing LOWER than takeoff (0.308 m/s and a
+    14.5 mm drop predict 94 ms against ~100 measured), and the CoM accelerates
+    at -11.1 m/s2 through those windows. A geometric clearance test was tried
+    and is strictly WORSE: it calls air 15% of the steps the contact sensor
+    calls contact, because the pad centre rises on tilt while an edge is still
+    down.
+
+    Conditions on a flight counting at all, all of them anti-exploit rather than
+    shaping: the enable bit was on at takeoff, so
+    hopping while asked to stand pays nothing; the flight lasts at least
+    `min_air_s`, which prices out a one-step flicker; and the robot is upright
+    at touchdown, so the launch half of a fall earns nothing.
+
+    No clamp, no target height, no datum. The three things that have each cost
+    this campaign a run are simply absent.
+    """
+
+    def __init__(self, cfg, env: ManagerBasedRlEnv) -> None:
+        del cfg
+        self._air_steps = torch.zeros(env.num_envs, device=env.device)
+        self._enabled_at_takeoff = torch.zeros(
+            env.num_envs, device=env.device, dtype=torch.bool
+        )
+
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        self._air_steps[env_ids] = 0.0
+        self._enabled_at_takeoff[env_ids] = False
+
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+        command_name: str = "twist",
+        sensor_name: str = "feet_ground_contact",
+        min_air_s: float = 0.04,
+        max_tilt: float = 0.8727,
+    ) -> torch.Tensor:
+        zeros = torch.zeros(env.num_envs, device=env.device)
+        air = _both_feet_airborne(env, sensor_name)
+        if air is None:
+            return zeros
+        airborne = air > 0.5
+
+        cmd = env.command_manager.get_command(command_name)
+        enabled = torch.nan_to_num(cmd[:, 2], nan=0.0) > 0.5
+        took_off = airborne & (self._air_steps <= 0)
+        self._enabled_at_takeoff = torch.where(took_off, enabled, self._enabled_at_takeoff)
+        self._air_steps = torch.where(airborne, self._air_steps + 1.0, self._air_steps)
+
+        landed = (~airborne) & (self._air_steps > 0)
+        asset: Entity = env.scene[asset_cfg.name]
+        grav = getattr(asset.data, "projected_gravity_b", None)
+        if grav is None:
+            upright = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+        else:
+            gz = torch.nan_to_num(grav[:, 2].float(), nan=0.0)
+            upright = torch.arccos(torch.clamp(-gz, -1.0, 1.0)) < max_tilt
+
+        flight_s = self._air_steps * env.step_dt
+        paid = landed & upright & self._enabled_at_takeoff & (flight_s >= min_air_s)
+        payout = torch.where(paid, flight_s, zeros)
+
+        # LOG QUANTITIES THAT SURVIVE PER-STEP AVERAGING, and derive the mean
+        # flight from them rather than logging it. `flight_s[paid].mean()` is
+        # NOT a mean flight duration: it is zero on every step without a
+        # landing and the logger averages over all steps, so it read 32.6 ms in
+        # a smoke test -- below the 40 ms gate no paid flight can be under.
+        # The first two below are the numerator and denominator of the real
+        # thing, logged the same way, so
+        #     mean paid flight [s] = hop_paid_flight_s / hop_landings_per_step
+        # is exact over any window. `hop_airtime_fraction` is the raw gait
+        # descriptor and is NOT that numerator: it counts every airborne step,
+        # including the unpaid air of a fall.
+        log = env.extras.get("log") if hasattr(env, "extras") else None
+        if log is not None:
+            log["Metrics/hop_paid_flight_s"] = torch.where(paid, flight_s, zeros).mean()
+            log["Metrics/hop_landings_per_step"] = paid.float().mean()
+            log["Metrics/hop_airtime_fraction"] = airborne.float().mean()
+
+        self._air_steps = torch.where(landed, zeros, self._air_steps)
+        return payout
+
+
 def hop_energy_monitor(
     env: ManagerBasedRlEnv,
     joint_names: tuple,

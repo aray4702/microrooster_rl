@@ -848,6 +848,11 @@ def make_true_hop_variant(cfg):
 # regularisers cost ~0.1-1/step. At a plausible 2-3 Hz this pays 1.6-2.4/step
 # on average, so it dominates without being a jackpot -- it is one bounded
 # payment per flight, and chatter earns ~0 because the amount is the height.
+# Mean-airtime weight. The term returns SECONDS of flight, once per landing.
+# A 20 mm hop is 128 ms of flight at ~5.3 Hz, i.e. ~0.68 s of payout per second
+# = 0.0136 per step; 80.0 makes that ~1.1/step, matching what the term it
+# replaces paid, so the rest of the reward stack keeps its balance.
+AIRTIME_WEIGHT = 80.0
 LANDING_WEIGHT = 40.0
 # 30 mm of CoM gain above the STANDING height for full credit. The only working
 # hopper reaches 22 mm median and 52 mm p90, so the gradient sits where the
@@ -978,14 +983,17 @@ def make_free_hop_variant(cfg):
 
     cfg.rewards.pop("hop_both_feet_airborne", None)
     cfg.rewards.pop("hop_body_height", None)
-    cfg.rewards["hop_landing_height"] = RewardTermCfg(
-        func=microduck_mdp.hop_landing_height,
-        weight=LANDING_WEIGHT,
+    # MEAN FLIGHT DURATION per hop. Replaces hop_landing_height, whose
+    # min(gain/target, 1) clamp capped quality at 1 and left RATE uncapped --
+    # measured at quality 0.59, doubling height could earn 1.69x against 2x for
+    # doubling frequency, and the policy converged on a 6.2 Hz buzz with 4.8 mm
+    # of rise. See hop_mean_airtime for the comparison that settled the form.
+    cfg.rewards["hop_mean_airtime"] = RewardTermCfg(
+        func=microduck_mdp.hop_mean_airtime,
+        weight=AIRTIME_WEIGHT,
         params={
-            "target_gain": LANDING_TARGET_GAIN,
             "min_air_s": LANDING_MIN_AIR_S,
             "max_tilt": FALL_LIMIT_ANGLE,
-            "height_source": "com",
         },
     )
     for name in ("hop_upward_velocity", "hop_load_force"):
