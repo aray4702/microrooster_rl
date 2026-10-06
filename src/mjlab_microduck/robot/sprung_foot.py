@@ -424,7 +424,12 @@ def make_sprung_foot_spec_fn(
                     name=f"{side}_boot_sleeve",
                     type=mujoco.mjtGeom.mjGEOM_CYLINDER,
                     # -y is downward at the home pose, as for the pad above.
-                    fromto=[0.0, -0.004, 0.0, 0.0, -(span - travel), 0.0],
+                    # The sleeve is on the ANKLE body, so it needs the same
+                    # fore-aft / lateral offsets the pad got -- otherwise it
+                    # stays on the ankle centreline and draws as a stray
+                    # cylinder 15.7 mm to the side of its own boot.
+                    fromto=[fore_aft, -0.004, SOLE_OFFSET_LATERAL,
+                            fore_aft, -(span - travel), SOLE_OFFSET_LATERAL],
                     size=[0.008, 0.0, 0.0],
                     contype=0, conaffinity=0, mass=0.0, group=2,
                     rgba=[0.25, 0.25, 0.28, 1.0],
