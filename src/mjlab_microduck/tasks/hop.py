@@ -1349,9 +1349,15 @@ def apply_hop_corrections(
         dropped = [k for k in list(cfg.events.keys()) if k not in keep]
         for k in dropped:
             cfg.events.pop(k, None)
+        # The curricula DRIVE those events -- com_range_curriculum looks up
+        # `randomize_com` by name and raises when it is gone. They only mutate
+        # things over training steps, so they have nothing to do in a viewer;
+        # dropping them wholesale is both the fix and the honest scope.
+        n_curr = len(cfg.curriculum)
+        cfg.curriculum = type(cfg.curriculum)()
         if dropped:
-            print(f"  [hop] HOP_NO_DR set -> {len(dropped)} randomisation events REMOVED "
-                  f"(inspection only; do NOT train like this)")
+            print(f"  [hop] HOP_NO_DR set -> {len(dropped)} randomisation events and "
+                  f"{n_curr} curricula REMOVED (inspection only; do NOT train like this)")
     return cfg
 
 
