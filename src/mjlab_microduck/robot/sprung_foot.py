@@ -367,6 +367,39 @@ def make_sprung_foot_spec_fn(
                 mass=pad_mass,
             )
             pad.add_site(name=f"{side}_foot", pos=[0.0, 0.0, 0.0])
+
+            # VISUAL ONLY: the boot column, so the mechanism can be SEEN.
+            #
+            # The pad is a 8 mm-thick box floating a few centimetres below the
+            # ankle with nothing drawn in between, which makes the viewer
+            # genuinely hard to read -- you cannot tell a compressing boot from
+            # a retracting leg, and that distinction is the whole question in
+            # this campaign. These two geoms draw the telescoping pair: a fixed
+            # sleeve on the ankle and a shaft on the pad, so the overlap between
+            # them IS the spring travel, visible directly.
+            #
+            # contype/conaffinity 0 and mass 0, so they are inert: no contacts,
+            # no inertia, no effect on the dynamics. `group=2` keeps them on the
+            # viewer's visual layer rather than the collision layer.
+            if travel > 0.0:
+                span = ANKLE_TO_SOLE + h_add
+                ankle.add_geom(
+                    name=f"{side}_boot_sleeve",
+                    type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+                    # -y is downward at the home pose, as for the pad above.
+                    fromto=[0.0, -0.004, 0.0, 0.0, -(span - travel), 0.0],
+                    size=[0.008, 0.0, 0.0],
+                    contype=0, conaffinity=0, mass=0.0, group=2,
+                    rgba=[0.25, 0.25, 0.28, 1.0],
+                )
+                pad.add_geom(
+                    name=f"{side}_boot_shaft",
+                    type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+                    fromto=[0.0, 0.0, 0.0, 0.0, span - travel * 0.5, 0.0],
+                    size=[0.005, 0.0, 0.0],
+                    contype=0, conaffinity=0, mass=0.0, group=2,
+                    rgba=[0.85, 0.55, 0.10, 1.0],
+                )
         return spec
 
     return _spec_fn
