@@ -349,9 +349,9 @@ def test_the_boot_hangs_under_the_foot_sole_not_the_ankle_axis():
     import mujoco
     import numpy as np
 
-    from mjlab_microduck.robot.sprung_foot import make_sprung_foot_spec_fn
+    from mjlab_microduck.robot.sprung_foot import K_MEASURED, make_sprung_foot_spec_fn
 
-    m = make_sprung_foot_spec_fn()().compile()
+    m = make_sprung_foot_spec_fn(stiffness=K_MEASURED)().compile()
     d = mujoco.MjData(m)
     mujoco.mj_resetData(m, d)
     mujoco.mj_forward(m, d)
