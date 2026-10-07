@@ -98,6 +98,8 @@ from mjlab_microduck.robot.sprung_foot import (
     H_ADD,
     K_MEASURED,
     K_SOFT,
+    K_SWEEP_HIGH,
+    K_SWEEP_LOW,
     PAD_MASS,
     PAD_MASS_V2,
     SOLE_LENGTH_V2,
@@ -362,7 +364,11 @@ for _entry in (
         # See K_SOFT in sprung_foot.py for why 4290 N/m is untestable on this
         # robot: it needs 9x body weight to store a useful amount, and the legs
         # top out near 2x.
-        ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SOFT)):
+        ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SOFT),
+        # The stiffness sweep. Same arm again, only k moves, so the four points
+        # (800 / 1200 / 2000 / 4290) are directly comparable.
+        ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SWEEP_LOW),
+        ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SWEEP_HIGH)):
     # 6-tuples keep the measured boot; a 7th element overrides the stiffness.
     _label, _hp, _hr, _robust, _sole, _act = _entry[:6]
     _k = _entry[6] if len(_entry) > 6 else K_MEASURED

@@ -1354,8 +1354,13 @@ def test_hopsoft_is_hopfree_with_a_softer_boot_and_nothing_else():
     from mjlab.tasks.registry import load_env_cfg
 
     free = load_env_cfg("Mjlab-HopFree-S50-DR-Sym-K3344-MicroDuck")
-    soft = load_env_cfg("Mjlab-HopSoft-S50-DR-Sym-K1200-MicroDuck")
+    for tid, k in (("Mjlab-HopSoft-S50-DR-Sym-K1200-MicroDuck", 1200.0),
+                   ("Mjlab-HopSoft-S50-DR-Sym-K800-MicroDuck", 800.0),
+                   ("Mjlab-HopSoft-S50-DR-Sym-K2000-MicroDuck", 2000.0)):
+        _assert_soft_arm_matches(free, load_env_cfg(tid), k, tid)
 
+
+def _assert_soft_arm_matches(free, soft, k, tid):
     # Same goal: identical reward stack, term for term, weight for weight.
     assert set(soft.rewards.keys()) == set(free.rewards.keys())
     for name in free.rewards:
@@ -1365,9 +1370,9 @@ def test_hopsoft_is_hopfree_with_a_softer_boot_and_nothing_else():
         # reward, so it cannot bias the comparison.
         fp = {k: v for k, v in free.rewards[name].params.items() if k != "stiffness"}
         sp = {k: v for k, v in soft.rewards[name].params.items() if k != "stiffness"}
-        assert sp == fp, name
+        assert sp == fp, (tid, name)
     assert free.rewards["hop_energy_monitor"].params["stiffness"] == 4290.0
-    assert soft.rewards["hop_energy_monitor"].params["stiffness"] == 1200.0
+    assert soft.rewards["hop_energy_monitor"].params["stiffness"] == k
     # Its weight is 1.0 but the function returns zeros -- it is a logger.
     # preload is a DISPLACEMENT, so it is shared and the FORCE scales with k:
     # 3.17 N on the stiff boot, 0.89 N on the soft one.
@@ -1392,5 +1397,5 @@ def test_hopsoft_is_hopfree_with_a_softer_boot_and_nothing_else():
         assert ids, "no foot_spring joint found"
         return [float(model.jnt_stiffness[j]) for j in ids]
 
-    assert all(k == pytest.approx(4290.0) for k in spring_k(free))
-    assert all(k == pytest.approx(1200.0) for k in spring_k(soft))
+    assert all(x == pytest.approx(4290.0) for x in spring_k(free)), tid
+    assert all(x == pytest.approx(k) for x in spring_k(soft)), tid

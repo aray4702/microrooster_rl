@@ -120,6 +120,18 @@ K_MEASURED = 4290.0
 # before the spring moved at all.
 K_SOFT = 1200.0
 
+# BRACKETS FOR THE STIFFNESS SWEEP. K_SOFT was chosen off a design table as the
+# softest rate the legs can fully charge, not by search, so it locates a regime
+# rather than an optimum. These two bracket it across a 5x range together with
+# the measured 4290, so the deliverable is a BAND to shop a real boot against
+# instead of a single number no off-the-shelf spring will hit.
+#
+# Why bracket rather than trust 1200: it bottoms out 2.5% of steps, so it is
+# near the soft limit already. If 800 bottoms badly the band runs upward from
+# 1200; if 2000 holds up, the part is far easier to source.
+K_SWEEP_LOW = 800.0
+K_SWEEP_HIGH = 2000.0
+
 # DELTA mass of fitting a spring boot, per foot: the 69 g spring boot REPLACES
 # the 18 g standard pad foot, so 69 - 18 = 51 g. The common motor-to-boot
 # interface (16.5 g) is present in BOTH configurations and cancels.
