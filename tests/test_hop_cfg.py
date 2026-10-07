@@ -1192,7 +1192,9 @@ def test_hopfree_pays_per_landing_and_gates_on_the_enable_bit():
     # the clamped-height term it replaces capped quality at 1 and left RATE the
     # only uncapped axis, which bought a 6.2 Hz buzz with 4.8 mm of rise.
     at = free.rewards["hop_mean_airtime"]
-    assert at.weight == 80.0
+    # Calibrated on MEASURED reward mass: at weight 80 the term ran at 1.617,
+    # and 60 reproduces the 1.22 that the only arm with good airtime ran at.
+    assert at.weight == 60.0
     assert "target_gain" not in at.params and "height_source" not in at.params
     assert at.params.get("min_air_s", 0.04) == 0.04
     # Both dense terms read the enable bit, not the sin/cos halves.
@@ -1332,3 +1334,63 @@ def test_spring_field_scalers_use_the_right_index_space():
         microduck_mdp.randomize_dof_field_scaled
     assert dr.events["randomize_foot_spring_stiffness"].params["field"] == "jnt_stiffness"
     assert dr.events["randomize_foot_spring_damping"].params["field"] == "dof_damping"
+
+
+def test_hopsoft_is_hopfree_with_a_softer_boot_and_nothing_else():
+    """HopSoft exists to test ONE variable: whether the spring can participate.
+
+    The measured 4290 N/m boot cannot be charged by this robot -- storing the
+    0.34 J a 40 mm hop needs takes 38 N per boot, nine times body weight, while
+    the legs deliver ~1x statically and the max-effort open-loop sweep tops out
+    at 4.79 mm of rise. At 1200 N/m full travel takes 3.6x instead of 12.9x,
+    and the preload (a fixed DISPLACEMENT, so it scales with k) drops from 75%
+    to 21% of each boot's share of body weight.
+
+    The experiment is only valid if everything else is held fixed. It nearly
+    was not: `_label.startswith("HopFree-S50")` silently skipped HopSoft, so the
+    first build had no enable bit and no hop reward at all. The 64-env smoke
+    test caught it; this test is here so the next person does not need to.
+    """
+    from mjlab.tasks.registry import load_env_cfg
+
+    free = load_env_cfg("Mjlab-HopFree-S50-DR-Sym-K3344-MicroDuck")
+    soft = load_env_cfg("Mjlab-HopSoft-S50-DR-Sym-K1200-MicroDuck")
+
+    # Same goal: identical reward stack, term for term, weight for weight.
+    assert set(soft.rewards.keys()) == set(free.rewards.keys())
+    for name in free.rewards:
+        assert soft.rewards[name].weight == free.rewards[name].weight, name
+        # `stiffness` is the one param allowed to differ: hop_energy_monitor
+        # needs the real spring rate to report elastic energy, and it pays zero
+        # reward, so it cannot bias the comparison.
+        fp = {k: v for k, v in free.rewards[name].params.items() if k != "stiffness"}
+        sp = {k: v for k, v in soft.rewards[name].params.items() if k != "stiffness"}
+        assert sp == fp, name
+    assert free.rewards["hop_energy_monitor"].params["stiffness"] == 4290.0
+    assert soft.rewards["hop_energy_monitor"].params["stiffness"] == 1200.0
+    # Its weight is 1.0 but the function returns zeros -- it is a logger.
+    # preload is a DISPLACEMENT, so it is shared and the FORCE scales with k:
+    # 3.17 N on the stiff boot, 0.89 N on the soft one.
+    assert (free.rewards["hop_energy_monitor"].params["preload"]
+            == soft.rewards["hop_energy_monitor"].params["preload"])
+
+    # Same task wiring -- these are the branches the label bug skipped.
+    assert "hop_mean_airtime" in soft.rewards
+    assert soft.commands["twist"].enable_bit is True
+    assert getattr(soft, "symmetric_actions", False) is True
+    assert len(getattr(soft, "hold_gated_rewards", ())) == 4
+
+    # Same sim2real stack (the -DR branch).
+    for ev in ("randomize_foot_spring_damping", "randomize_foot_spring_stiffness"):
+        assert ev in soft.events, ev
+
+    # The ONE difference: the spring rate.
+    def spring_k(cfg):
+        model = cfg.scene.entities["robot"].spec_fn().compile()
+        ids = [j for j in range(model.njnt)
+               if "foot_spring" in (model.joint(j).name or "")]
+        assert ids, "no foot_spring joint found"
+        return [float(model.jnt_stiffness[j]) for j in ids]
+
+    assert all(k == pytest.approx(4290.0) for k in spring_k(free))
+    assert all(k == pytest.approx(1200.0) for k in spring_k(soft))

@@ -97,6 +97,7 @@ from .hop import (
 from mjlab_microduck.robot.sprung_foot import (
     H_ADD,
     K_MEASURED,
+    K_SOFT,
     PAD_MASS,
     PAD_MASS_V2,
     SOLE_LENGTH_V2,
@@ -286,7 +287,7 @@ for _sym, _suffix in ((False, "InPlace"), (True, "InPlaceSym")):
 #                length 241 of 1000 in 1500 iters; the hop arms reach 865-980).
 #   HopPause  -- hold_prob 0.5, holds of 1-5 s: stands AND hops on demand. The
 #                deliverable. Runs remotely.
-for _label, _hp, _hr, _robust, _sole, _act in (
+for _entry in (
         ("HopStand", 1.0, (60.0, 60.0), False, None, "bench"),
         ("HopPause", 0.5, (1.0, 5.0), False, None, "bench"),
         ("HopPauseR", 0.5, (1.0, 8.0), True, None, "bench"),
@@ -355,10 +356,21 @@ for _label, _hp, _hr, _robust, _sole, _act in (
         # the quiet-hold penalty. Applied from step 0 this stack has stood and
         # never hopped in every arm that tried it; applied to a policy that
         # already hops, it is the transfer pass.
-        ("HopFree-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench")):
-    def _build_pause(play: bool, _hp=_hp, _hr=_hr, _robust=_robust, _sole=_sole, _act=_act, _label=_label):
+        ("HopFree-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench"),
+        # HopSoft: the SAME arm, with a boot the robot can actually charge.
+        # Everything else is held fixed so the only variable is the spring.
+        # See K_SOFT in sprung_foot.py for why 4290 N/m is untestable on this
+        # robot: it needs 9x body weight to store a useful amount, and the legs
+        # top out near 2x.
+        ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SOFT)):
+    # 6-tuples keep the measured boot; a 7th element overrides the stiffness.
+    _label, _hp, _hr, _robust, _sole, _act = _entry[:6]
+    _k = _entry[6] if len(_entry) > 6 else K_MEASURED
+
+    def _build_pause(play: bool, _hp=_hp, _hr=_hr, _robust=_robust, _sole=_sole,
+                     _act=_act, _label=_label, _k=_k):
         cfg = make_in_place_variant(make_symmetric_variant(make_hop_variant(
-            make_microduck_velocity_env_cfg(play=play), stiffness=K_MEASURED,
+            make_microduck_velocity_env_cfg(play=play), stiffness=_k,
             hold_prob=_hp, hold_range=_hr)))
         if _robust == "r2":
             cfg = make_robust_stand_variant(cfg, kp_range=(0.8, 1.8), kd_range=(0.8, 1.3),
@@ -376,7 +388,7 @@ for _label, _hp, _hr, _robust, _sole, _act in (
         if "head_pose_tracking" not in cfg.rewards:
             base = make_microduck_velocity_env_cfg(play=play)
             cfg.rewards["head_pose_tracking"] = base.rewards["head_pose_tracking"]
-        sprung_kw = dict(stiffness=K_MEASURED, travel=TRAVEL, pad_mass=PAD_MASS, h_add=H_ADD)
+        sprung_kw = dict(stiffness=_k, travel=TRAVEL, pad_mass=PAD_MASS, h_add=H_ADD)
         if _sole is not None:
             sprung_kw["sole_length"] = _sole
             # The two boots differ in width as well as length: V1 is 40 mm,
@@ -394,18 +406,24 @@ for _label, _hp, _hr, _robust, _sole, _act in (
             cfg = make_hop_window_focus_variant(make_structural_symmetry_variant(cfg))
         if _label == "HopSym-S50":
             cfg = make_structural_symmetry_variant(cfg)
-        if _label.startswith("HopFree-S50"):
+        # HopSoft is HopFree with a softer boot and nothing else, so it must
+        # take every one of these branches. It is listed explicitly rather than
+        # folded into the startswith: a label that silently misses one of them
+        # is not a stiffness experiment, it is a different task (the 64-env
+        # smoke test caught exactly that -- no enable bit, no airtime reward).
+        if _label.startswith(("HopFree-S50", "HopSoft-S50")):
             cfg = make_free_hop_variant(make_hop_window_focus_variant(
                 make_structural_symmetry_variant(cfg)))
-        if _label == "HopFree-S50-DR":
+        if _label in ("HopFree-S50-DR", "HopSoft-S50-DR"):
             cfg = make_hop_sim2real_variant(cfg)
         if _label.endswith("SymHop"):
             cfg = make_true_hop_variant(
                 make_hop_window_focus_variant(make_structural_symmetry_variant(cfg)))
         return apply_hop_corrections(make_sprung_variant(cfg, **sprung_kw), actuator=_act)
-    _tid = f"Mjlab-{_label}-Sym-K3344-MicroDuck"
+    _klabel = "K3344" if _k == K_MEASURED else f"K{int(_k)}"
+    _tid = f"Mjlab-{_label}-Sym-{_klabel}-MicroDuck"
     register_mjlab_task(task_id=_tid, env_cfg=_build_pause(False), play_env_cfg=_build_pause(True),
-                        rl_cfg=hop_rl_cfg("k3344"), runner_cls=MicroduckOnPolicyRunner)
+                        rl_cfg=hop_rl_cfg(_klabel.lower()), runner_cls=MicroduckOnPolicyRunner)
     print(f"✓ Hop task registered: {_tid}")
 
 # ── Stand-Sprung: the active "stable home" for the boot robot ────────────────

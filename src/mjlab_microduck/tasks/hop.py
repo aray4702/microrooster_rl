@@ -848,11 +848,18 @@ def make_true_hop_variant(cfg):
 # regularisers cost ~0.1-1/step. At a plausible 2-3 Hz this pays 1.6-2.4/step
 # on average, so it dominates without being a jackpot -- it is one bounded
 # payment per flight, and chatter earns ~0 because the amount is the height.
-# Mean-airtime weight. The term returns SECONDS of flight, once per landing.
-# A 20 mm hop is 128 ms of flight at ~5.3 Hz, i.e. ~0.68 s of payout per second
-# = 0.0136 per step; 80.0 makes that ~1.1/step, matching what the term it
-# replaces paid, so the rest of the reward stack keeps its balance.
-AIRTIME_WEIGHT = 80.0
+# Mean-airtime weight, CALIBRATED AGAINST MEASURED REWARD MASS rather than
+# against a hop nobody has seen. The first attempt reasoned from a hypothetical
+# 20 mm hop at 5.3 Hz and picked 80.0; the run then measured the term at 0.162,
+# i.e. 5.3% of positive reward mass, against 1.22 / 24.9% for the clamped-height
+# term it replaced. Underpaid by 7.5x, the policy stopped investing in hopping
+# and airtime fell 67% -> 49%. AGENTS.md says to compare reward MASS, not
+# weights; this is that rule being obeyed instead of quoted.
+#
+# With the payout now in units of 100 ms (see hop_mean_airtime's ref_s), the
+# same behaviour scores 1.617 at weight 80, so 60.0 reproduces the 1.22 that
+# the only arm with good airtime actually ran at.
+AIRTIME_WEIGHT = 60.0
 LANDING_WEIGHT = 40.0
 # 30 mm of CoM gain above the STANDING height for full credit. The only working
 # hopper reaches 22 mm median and 52 mm p90, so the gradient sits where the

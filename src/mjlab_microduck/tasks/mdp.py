@@ -7594,6 +7594,7 @@ class hop_mean_airtime:
         sensor_name: str = "feet_ground_contact",
         min_air_s: float = 0.04,
         max_tilt: float = 0.8727,
+        ref_s: float = 0.1,
     ) -> torch.Tensor:
         zeros = torch.zeros(env.num_envs, device=env.device)
         air = _both_feet_airborne(env, sensor_name)
@@ -7618,7 +7619,16 @@ class hop_mean_airtime:
 
         flight_s = self._air_steps * env.step_dt
         paid = landed & upright & self._enabled_at_takeoff & (flight_s >= min_air_s)
-        payout = torch.where(paid, flight_s, zeros)
+        # PAY IN UNITS OF `ref_s`, NOT RAW SECONDS. This is a scale fix, not a
+        # shaping change: it is one constant factor, so it cannot alter which
+        # behaviour is optimal, only how loudly the term speaks. Paying raw
+        # seconds put ~0.09 per landing against the 0.59 the clamped-height
+        # term paid, and the hop collapsed from 24.9% of positive reward mass
+        # to 5.3% -- it fell out of the top five terms and the policy sensibly
+        # stopped investing in hopping (measured: airtime 67% -> 49%). At
+        # ref_s = 0.1 a 100 ms flight pays 1.0, directly comparable to the old
+        # term's capped 1.0, so the weight means what it used to mean.
+        payout = torch.where(paid, flight_s / ref_s, zeros)
 
         # LOG QUANTITIES THAT SURVIVE PER-STEP AVERAGING, and derive the mean
         # flight from them rather than logging it. `flight_s[paid].mean()` is

@@ -1125,6 +1125,9 @@ def test_symmetric_push_does_not_exceed_one_when_both_feet_slam():
 # clamped-height term it replaces capped quality at 1 and left RATE the only
 # uncapped axis, and the policy duly converged on a 6.2 Hz buzz.
 
+# Payout is in units of ref_s = 100 ms, so a 100 ms flight pays 1.0. That scale
+# exists so the weight is comparable to the clamped-height term it replaced;
+# paying raw seconds underpaid the hop by 7.5x in reward mass.
 _ENABLED = [[0.0, 1.0, 1.0]]    # slot 2 is the hop-enable bit
 _DISABLED = [[0.0, 1.0, 0.0]]
 
@@ -1144,7 +1147,7 @@ def _fly(term, env, steps, cmd=None):
 def test_mean_airtime_pays_the_flight_duration_once_at_touchdown():
     env = _Env(found=_PLANTED, cmd=_ENABLED)
     term = _airtime_term(env)
-    assert abs(_fly(term, env, 5) - 0.10) < 1e-6      # 5 steps x 20 ms
+    assert abs(_fly(term, env, 5) - 1.0) < 1e-6   # 5 steps x 20 ms = 100 ms = 1 ref
 
 
 def test_mean_airtime_pays_nothing_while_still_airborne():
@@ -1168,8 +1171,8 @@ def test_mean_airtime_is_rate_neutral():
     env2 = _Env(found=_PLANTED, cmd=_ENABLED)
     fast = _airtime_term(env2)
     fast_total = sum(_fly(fast, env2, 3) for _ in range(4))   # 60 ms each
-    assert abs(slow_total - 0.20) < 1e-6
-    assert abs(fast_total - 0.24) < 1e-6
+    assert abs(slow_total - 2.0) < 1e-6          # 2 x 100 ms
+    assert abs(fast_total - 2.4) < 1e-6          # 4 x  60 ms
     # A longer hop pays strictly more per hop, which is the only axis left.
     assert _fly(slow, env, 10) > _fly(fast, env2, 3)
 
@@ -1180,7 +1183,7 @@ def test_mean_airtime_rejects_a_one_step_flicker():
     env = _Env(found=_PLANTED, cmd=_ENABLED)
     term = _airtime_term(env)
     assert _fly(term, env, 1) == 0.0
-    assert abs(_fly(term, env, 2) - 0.04) < 1e-6      # exactly at the gate
+    assert abs(_fly(term, env, 2) - 0.4) < 1e-6       # 40 ms, exactly at the gate
 
 
 def test_mean_airtime_pays_nothing_when_the_hop_was_not_commanded():

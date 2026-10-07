@@ -95,6 +95,31 @@ H_ADD = 0.030      # measured on the Sarrus prototype (was an assumed 0.025)
 # See rebot-lerobot/bench/RESULTS_loadcell.md.
 K_MEASURED = 4290.0
 
+# A DELIBERATELY SOFTER BOOT, to test whether the spring can participate AT ALL.
+#
+# The measured boot cannot be charged by this robot, and the arithmetic is not
+# close. A series spring between foot and ground is loaded only by the ground
+# reaction force. To store the 0.34 J a 40 mm hop needs, k=4290 must compress
+# 8.2 mm, which takes 38 N per boot -- NINE times body weight. The legs deliver
+# ~1x statically and ~2x in their best landing, and the max-effort open-loop
+# sweep tops out at 4.79 mm of rise (0.217 m/s takeoff), so the hard landing
+# that would charge the spring requires a hop the robot cannot make. The loop
+# never closes, and every run since 2026-09 has duly measured the boot
+# contributing a few percent: loaded compression 0.81-0.89 mm of 12 mm travel,
+# p95 1.7-2.4 mm, bottomed 0.0% of the time, unchanged across the stiffness
+# correction, the geometry correction and the reward rewrite.
+#
+# At 1200 N/m full travel takes 15.3 N, about 3.6x body weight, which a 0.6 m/s
+# landing actually produces -- and full travel then stores 86 mJ per boot, worth
+# ~20 mm of CoM rise against the 5-7 mm the legs manage alone. This is the first
+# stiffness where the spring could do something the legs cannot.
+#
+# SPRING_PRELOAD is a DISPLACEMENT, so softening fixes the preload problem for
+# free: preload force falls from 3.17 N to 0.89 N per boot. At k=4290 three
+# quarters of each boot's share of body weight was spent overcoming preload
+# before the spring moved at all.
+K_SOFT = 1200.0
+
 # DELTA mass of fitting a spring boot, per foot: the 69 g spring boot REPLACES
 # the 18 g standard pad foot, so 69 - 18 = 51 g. The common motor-to-boot
 # interface (16.5 g) is present in BOTH configurations and cancels.
