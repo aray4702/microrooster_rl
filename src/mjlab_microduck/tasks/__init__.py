@@ -368,13 +368,26 @@ for _entry in (
         # The stiffness sweep. Same arm again, only k moves, so the four points
         # (800 / 1200 / 2000 / 4290) are directly comparable.
         ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SWEEP_LOW),
-        ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SWEEP_HIGH)):
+        ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SWEEP_HIGH),
+        # HopLocked: the RIGID control, and the arm that actually settles the
+        # campaign question. Same pad mass and same stance height, zero
+        # compliance. With the reward mass fixed the measured 4290 boot reaches
+        # 24.0 mm of ballistic rise while compressing only 2.63 mm of its 12 mm
+        # travel, and softening to 1200 made it WORSE (16.8 mm) -- so the boot
+        # may be contributing nothing but mass. If rigid matches 4290, it is.
+        ("HopLocked-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench",
+         K_MEASURED, 0.0)):
     # 6-tuples keep the measured boot; a 7th element overrides the stiffness.
     _label, _hp, _hr, _robust, _sole, _act = _entry[:6]
     _k = _entry[6] if len(_entry) > 6 else K_MEASURED
+    # travel == 0.0 is the RIGID control: sprung_foot adds no joint at all, so
+    # the pad is a rigid child of the ankle with identical mass and height.
+    # That is what isolates COMPLIANCE from the boot's extra mass and stance
+    # height -- the two things every sprung arm also changes.
+    _travel = _entry[7] if len(_entry) > 7 else TRAVEL
 
     def _build_pause(play: bool, _hp=_hp, _hr=_hr, _robust=_robust, _sole=_sole,
-                     _act=_act, _label=_label, _k=_k):
+                     _act=_act, _label=_label, _k=_k, _travel=_travel):
         cfg = make_in_place_variant(make_symmetric_variant(make_hop_variant(
             make_microduck_velocity_env_cfg(play=play), stiffness=_k,
             hold_prob=_hp, hold_range=_hr)))
@@ -394,7 +407,7 @@ for _entry in (
         if "head_pose_tracking" not in cfg.rewards:
             base = make_microduck_velocity_env_cfg(play=play)
             cfg.rewards["head_pose_tracking"] = base.rewards["head_pose_tracking"]
-        sprung_kw = dict(stiffness=_k, travel=TRAVEL, pad_mass=PAD_MASS, h_add=H_ADD)
+        sprung_kw = dict(stiffness=_k, travel=_travel, pad_mass=PAD_MASS, h_add=H_ADD)
         if _sole is not None:
             sprung_kw["sole_length"] = _sole
             # The two boots differ in width as well as length: V1 is 40 mm,
@@ -417,16 +430,26 @@ for _entry in (
         # folded into the startswith: a label that silently misses one of them
         # is not a stiffness experiment, it is a different task (the 64-env
         # smoke test caught exactly that -- no enable bit, no airtime reward).
-        if _label.startswith(("HopFree-S50", "HopSoft-S50")):
+        if _label.startswith(("HopFree-S50", "HopSoft-S50", "HopLocked-S50")):
             cfg = make_free_hop_variant(make_hop_window_focus_variant(
                 make_structural_symmetry_variant(cfg)))
-        if _label in ("HopFree-S50-DR", "HopSoft-S50-DR"):
+        if _label in ("HopFree-S50-DR", "HopSoft-S50-DR", "HopLocked-S50-DR"):
             cfg = make_hop_sim2real_variant(cfg)
         if _label.endswith("SymHop"):
             cfg = make_true_hop_variant(
                 make_hop_window_focus_variant(make_structural_symmetry_variant(cfg)))
-        return apply_hop_corrections(make_sprung_variant(cfg, **sprung_kw), actuator=_act)
-    _klabel = "K3344" if _k == K_MEASURED else f"K{int(_k)}"
+        cfg = apply_hop_corrections(make_sprung_variant(cfg, **sprung_kw), actuator=_act)
+        if _travel == 0.0:
+            # No `passive_*_foot_spring` joint exists, so anything selecting one
+            # would match nothing (events) or index a missing joint (monitors).
+            for _name in ("hop_energy_monitor", "spring_compression_monitor"):
+                cfg.rewards.pop(_name, None)
+            for _name in ("randomize_foot_spring_damping",
+                          "randomize_foot_spring_stiffness"):
+                cfg.events.pop(_name, None)
+        return cfg
+    _klabel = ("Locked" if _travel == 0.0
+               else "K3344" if _k == K_MEASURED else f"K{int(_k)}")
     _tid = f"Mjlab-{_label}-Sym-{_klabel}-MicroDuck"
     register_mjlab_task(task_id=_tid, env_cfg=_build_pause(False), play_env_cfg=_build_pause(True),
                         rl_cfg=hop_rl_cfg(_klabel.lower()), runner_cls=MicroduckOnPolicyRunner)

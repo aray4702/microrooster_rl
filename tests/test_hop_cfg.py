@@ -1399,3 +1399,48 @@ def _assert_soft_arm_matches(free, soft, k, tid):
 
     assert all(x == pytest.approx(4290.0) for x in spring_k(free)), tid
     assert all(x == pytest.approx(k) for x in spring_k(soft)), tid
+
+
+def test_hoplocked_is_a_valid_rigid_control():
+    """The arm that settles the campaign question, so its validity is the point.
+
+    A sprung boot changes THREE things at once: compliance, +38 g of pad mass,
+    and +30 mm of stance height. A control that differs in any of the other two
+    cannot attribute a difference to the spring. travel=0.0 adds no joint at
+    all, keeping mass and height while removing only compliance -- a slide joint
+    with range [0,0] would NOT do this (MuJoCo leaves `limited` at AUTO, making
+    it an infinite-travel spring).
+    """
+    from mjlab.tasks.registry import load_env_cfg
+
+    free = load_env_cfg("Mjlab-HopFree-S50-DR-Sym-K3344-MicroDuck")
+    lock = load_env_cfg("Mjlab-HopLocked-S50-DR-Sym-Locked-MicroDuck")
+
+    def model_of(cfg):
+        return cfg.scene.entities["robot"].spec_fn().compile()
+
+    mf, ml = model_of(free), model_of(lock)
+    springs = [j for j in range(ml.njnt) if "foot_spring" in (ml.joint(j).name or "")]
+    assert springs == [], "the rigid control still has a spring DoF"
+    assert ml.njnt == mf.njnt - 2          # exactly the two spring joints gone
+    # Mass and stance height must MATCH, or the comparison is unattributable.
+    assert ml.body_mass.sum() == pytest.approx(mf.body_mass.sum(), abs=1e-6)
+
+    # Same goal and same sim2real stack as the sprung arm.
+    assert lock.rewards["hop_mean_airtime"].weight == free.rewards["hop_mean_airtime"].weight
+    assert lock.commands["twist"].enable_bit is True
+    assert getattr(lock, "symmetric_actions", False) is True
+
+    # The spring-reading terms must be GONE, not left to select a missing joint.
+    for name in ("hop_energy_monitor", "spring_compression_monitor"):
+        assert name in free.rewards, name
+        assert name not in lock.rewards, name
+    for ev in ("randomize_foot_spring_damping", "randomize_foot_spring_stiffness"):
+        assert ev in free.events, ev
+        assert ev not in lock.events, ev
+
+    # Every OTHER reward term survives untouched.
+    shared = set(free.rewards) - {"hop_energy_monitor", "spring_compression_monitor"}
+    assert set(lock.rewards) == shared
+    for name in shared:
+        assert lock.rewards[name].weight == free.rewards[name].weight, name
