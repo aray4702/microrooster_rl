@@ -78,6 +78,7 @@ instead of locally (see [scripts/hf/README.md](scripts/hf/README.md)).
 | `Mjlab-RollerSlope-Flat-MicroDuck` | slope | Glide down slopes on rollers |
 | `Mjlab-RollerStandUp-Flat-MicroDuck` | flat | Stand up from the ground onto the wheels |
 | `Mjlab-Spin-Flat-MicroDuck` | flat | Fast spin in place on rollers |
+| `Mjlab-Velocity-Flat-MicroRooster` | flat | Velocity task on the Micro Rooster body (see [docs/microrooster.md](docs/microrooster.md)) |
 
 At deployment the runtime hot-swaps these policies (walk / recover / trick)
 behind a shared 61-dimensional observation contract, so any of them can take
