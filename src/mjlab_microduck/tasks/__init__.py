@@ -27,6 +27,10 @@ from .microduck_velocity_env_cfg import (
     make_microduck_velocity_env_cfg,
     MicroduckRlCfg,
 )
+from .microrooster_velocity_env_cfg import (
+    make_microrooster_velocity_env_cfg,
+    MicroroosterRlCfg,
+)
 from .microduck_standup_env_cfg import (
     make_microduck_standup_env_cfg,
     MicroduckStandUpRlCfg,
@@ -83,6 +87,15 @@ register_mjlab_task(
     env_cfg=make_microduck_velocity_env_cfg(),
     play_env_cfg=make_microduck_velocity_env_cfg(play=True),
     rl_cfg=MicroduckRlCfg,
+    runner_cls=MicroduckOnPolicyRunner,
+)
+
+# Micro Rooster: duck velocity task on the 12-servo STS3215 rooster body.
+register_mjlab_task(
+    task_id="Mjlab-Velocity-Flat-MicroRooster",
+    env_cfg=make_microrooster_velocity_env_cfg(),
+    play_env_cfg=make_microrooster_velocity_env_cfg(play=True),
+    rl_cfg=MicroroosterRlCfg,
     runner_cls=MicroduckOnPolicyRunner,
 )
 

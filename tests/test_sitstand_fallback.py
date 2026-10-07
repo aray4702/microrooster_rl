@@ -54,6 +54,8 @@ class _Data:
 
 
 class _Asset:
+    joint_names = ["neck_pitch", "head_pitch", "head_yaw", "head_roll"]
+
     def __init__(self, n):
         self.data = _Data(n)
         self.written = None

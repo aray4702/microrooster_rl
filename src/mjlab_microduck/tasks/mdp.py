@@ -2,6 +2,7 @@
 
 import math
 import os
+import re
 from dataclasses import dataclass as _dataclass
 
 import numpy as np
@@ -154,6 +155,16 @@ _DEFAULT_ASSET_CFG = SceneEntityCfg("robot")
 # Name patterns matching the 4 neck/head actuated joints. Used by head_pose
 # tracking reward and by UniformPoseCommand asset hookups.
 _NECK_JOINT_PATTERNS = [r".*neck_pitch.*", r".*head_pitch.*", r".*head_yaw.*", r".*head_roll.*"]
+
+
+def _neck_patterns(asset: Entity) -> list[str]:
+    """The _NECK_JOINT_PATTERNS this robot actually has, in canonical order.
+
+    Microduck has all four; Micro Rooster welds head_yaw/head_roll and keeps
+    neck_pitch/head_pitch, so its head command is 2D in the same order.
+    """
+    return [p for p in _NECK_JOINT_PATTERNS
+            if any(re.fullmatch(p, n) for n in asset.joint_names)]
 
 
 def _servo_joint_ids(env: "ManagerBasedRlEnv", asset: Entity) -> list:
@@ -5515,7 +5526,7 @@ def head_pose_tracking(
     cmd = env.command_manager.get_command(command_name)  # (N, 4)
 
     if not hasattr(env, "_head_pose_neck_ids"):
-        ids, names = asset.find_joints_by_actuator_names(_NECK_JOINT_PATTERNS)
+        ids, names = asset.find_joints_by_actuator_names(_neck_patterns(asset))
         env._head_pose_neck_ids = torch.tensor(ids, device=env.device, dtype=torch.long)
         name_to_id = {n: i for i, n in enumerate(asset.joint_names)}
         bl = [name_to_id.get(f"passive_{n}_backlash") for n in names]
@@ -6850,7 +6861,7 @@ def posture_composite(
 
     if head_std is not None:
         if not hasattr(env, "_head_pose_neck_ids"):
-            ids, _ = asset.find_joints_by_actuator_names(_NECK_JOINT_PATTERNS)
+            ids, _ = asset.find_joints_by_actuator_names(_neck_patterns(asset))
             env._head_pose_neck_ids = torch.tensor(ids, device=env.device, dtype=torch.long)
         neck_ids = env._head_pose_neck_ids
         head_cmd = env.command_manager.get_command(head_command_name)
@@ -7065,7 +7076,7 @@ def neck_torque_when_tilted(
     """
     asset: Entity = env.scene[asset_cfg.name]
     if not hasattr(env, "_neck_actuator_ids"):
-        ids, _ = asset.find_actuators(_NECK_JOINT_PATTERNS, preserve_order=True)
+        ids, _ = asset.find_actuators(_neck_patterns(asset), preserve_order=True)
         env._neck_actuator_ids = torch.tensor(ids, device=env.device, dtype=torch.long)
     tau = torch.nan_to_num(asset.data.actuator_force[:, env._neck_actuator_ids], nan=0.0)
     cost = torch.square(tau / torque_scale).mean(dim=1)

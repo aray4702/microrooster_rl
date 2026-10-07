@@ -110,3 +110,46 @@ class BacklashEncoderBamActuatorCfg(FrictionDRBamActuatorCfg):
 
     def build(self, entity, target_ids, target_names) -> BacklashEncoderBamActuator:
         return BacklashEncoderBamActuator(self, entity, target_ids, target_names)
+
+
+class RateLimitedTargetBamActuator(FrictionDRBamActuator):
+    """FrictionDRBamActuator for servos whose firmware rate-limits the target.
+
+    BAM's Feetech STS3215 control law slews an internal ``q_target_smooth``
+    toward the commanded position at the servo's max velocity. BAM only
+    allocates that state in ``load_log`` (its fitting path), so under mjlab it
+    is missing. This subclass owns it per env, shape (num_envs, num_joints),
+    and re-syncs it to the measured position after every reset, like the real
+    firmware does when torque is enabled.
+    """
+
+    def initialize(self, mj_model, model, data, device) -> None:
+        super().initialize(mj_model, model, data, device)
+        self._needs_target_sync = torch.ones(
+            self._num_envs, dtype=torch.bool, device=device
+        )
+        self._bam_model.actuator.q_target_smooth = None
+
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        super().reset(env_ids)
+        if env_ids is None:
+            self._needs_target_sync[:] = True
+        else:
+            self._needs_target_sync[env_ids] = True
+
+    def compute(self, cmd: ActuatorCmd) -> torch.Tensor:
+        act = self._bam_model.actuator
+        if act.q_target_smooth is None:
+            act.q_target_smooth = cmd.pos.clone()
+        sync = self._needs_target_sync.unsqueeze(-1)
+        act.q_target_smooth = torch.where(sync, cmd.pos, act.q_target_smooth)
+        self._needs_target_sync[:] = False
+        return super().compute(cmd)
+
+
+@dataclass(kw_only=True)
+class RateLimitedTargetBamActuatorCfg(FrictionDRBamActuatorCfg):
+    """FrictionDRBamActuatorCfg for rate-limited-target servos (Feetech STS3215)."""
+
+    def build(self, entity, target_ids, target_names) -> RateLimitedTargetBamActuator:
+        return RateLimitedTargetBamActuator(self, entity, target_ids, target_names)
