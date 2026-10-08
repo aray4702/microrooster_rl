@@ -46,6 +46,7 @@ Obs-contract dependencies (61D actor obs, see AGENTS.md): projected gravity at
 from __future__ import annotations
 
 import copy
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -57,12 +58,33 @@ from mjlab_microduck.tasks.symmetry import PpoWithSymmetryCfg
 
 EXPERT_CACHE_DIR = Path("logs/rsl_rl/expert_cache")
 
+# Teacher overrides, "<entity/project/run_id>@<model_N.pt>": the defaults are
+# Pollen's wandb runs, which other accounts cannot read. --hf-jobs forwards
+# every MICRODUCK_* variable to the job. See docs/microduck_velstand_training.md.
+WALK_EXPERT_ENV = "MICRODUCK_WALK_EXPERT"
+STAND_EXPERT_ENV = "MICRODUCK_STAND_EXPERT"
+
+
+def expert_run(env_var: str, default_run: str, default_checkpoint: str) -> tuple[str, str]:
+    """(wandb run path, checkpoint name) from ``env_var`` if set, else the defaults."""
+    value = os.environ.get(env_var, "").strip()
+    if not value:
+        return default_run, default_checkpoint
+    run, sep, checkpoint = value.partition("@")
+    if not sep or run.count("/") != 2 or not checkpoint.endswith(".pt"):
+        raise ValueError(f"{env_var}={value!r}: expected <entity/project/run_id>@<model_N.pt>")
+    return run, checkpoint
+
 
 def default_bc_cfg() -> dict:
+    stand_run, stand_ckpt = expert_run(
+        STAND_EXPERT_ENV, "pollen-robotics/mjlab_microduck/69u48n8l", "model_9750.pt")
+    walk_run, walk_ckpt = expert_run(
+        WALK_EXPERT_ENV, "pollen-robotics/mjlab_microduck/441tzs6d", "model_3750.pt")
     return {
         # Expert checkpoint: either a local ``checkpoint_path`` or a wandb run.
-        "wandb_run_path": "pollen-robotics/mjlab_microduck/69u48n8l",
-        "checkpoint_name": "model_9750.pt",
+        "wandb_run_path": stand_run,
+        "checkpoint_name": stand_ckpt,
         "checkpoint_path": None,
         "coef": 1.0,               # MSE weight (actions in rad)
         "learning_rate": 3e-4,     # dedicated Adam (PPO's adaptive-KL LR must not throttle the BC)
@@ -74,8 +96,8 @@ def default_bc_cfg() -> dict:
         "gravity_slice": (3, 6),   # projected gravity in the actor obs
         "twist_slice": (48, 51),   # twist command slot → zeroed for the stand expert
         # Walk anchor (run-3 lesson): the warm-start walk teaches frames with tilt < anchor_tilt_deg.
-        "anchor_wandb_run_path": "pollen-robotics/mjlab_microduck/441tzs6d",
-        "anchor_checkpoint_name": "model_3750.pt",
+        "anchor_wandb_run_path": walk_run,
+        "anchor_checkpoint_name": walk_ckpt,
         "anchor_checkpoint_path": None,
         "anchor_coef": 1.0,
         "anchor_tilt_deg": 25.0,
