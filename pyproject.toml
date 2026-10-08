@@ -5,7 +5,7 @@ build-backend = "uv_build"
 [project]
 name = "mjlab-microduck"
 version = "0.1.0"
-description = "RL training environments for the Microduck robot, built on mjlab"
+description = "RL training environments for the Microduck and Micro Rooster robots, built on mjlab"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]

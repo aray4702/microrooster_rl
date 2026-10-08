@@ -1,3 +1,26 @@
+# Micro Rooster RL
+
+A fork of [pollen-robotics/microduck_rl](https://github.com/pollen-robotics/microduck_rl)
+that adds **Micro Rooster**: a larger, rooster-shaped sibling of Microduck
+with 12 Feetech STS3215 servos (~1.17 kg), trained with the same
+[mjlab](https://github.com/mujocolab/mjlab) + BAM sim2real recipe. All the
+original Microduck environments are kept unchanged.
+
+| | |
+|---|---|
+| Model | [`src/mjlab_microduck/robot/microrooster/`](src/mjlab_microduck/robot/microrooster/) — generated from the Microduck walk model by `make_rooster.py` |
+| Robot cfg | [`robot/microrooster_constants.py`](src/mjlab_microduck/robot/microrooster_constants.py) |
+| Tasks | `Mjlab-Velocity-Flat-MicroRooster` ([`tasks/microrooster_velocity_env_cfg.py`](src/mjlab_microduck/tasks/microrooster_velocity_env_cfg.py)) |
+| Guide | [docs/microrooster.md](docs/microrooster.md) — view, regenerate, train |
+
+The Python package keeps its upstream name (`mjlab_microduck`) so upstream
+changes merge cleanly; rooster code uses the `microrooster` prefix throughout.
+See [NOTICE](NOTICE) for attribution.
+
+The rest of this README is the upstream Microduck documentation.
+
+---
+
 # Microduck RL
 
 <img width="2215" height="884" alt="image" src="https://github.com/user-attachments/assets/5db7cc83-b3ce-4f7c-83f0-0572a63baed7" />
@@ -28,8 +51,8 @@ Requires a CUDA GPU (training runs through MuJoCo Warp) and [uv](https://docs.as
 > Export `UV_HTTP_TIMEOUT=600` for the first sync. 
 
 ```bash
-git clone https://github.com/pollen-robotics/microduck_rl
-cd microduck_rl
+git clone https://github.com/aray4702/microrooster_rl
+cd microrooster_rl
 
 # train the walking policy (uses your GPU; ~1-2 h for a usable gait at 4096 envs)
 uv run train Mjlab-Velocity-Flat-MicroDuck --env.scene.num-envs 4096
