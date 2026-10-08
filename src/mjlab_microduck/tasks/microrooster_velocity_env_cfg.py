@@ -5,8 +5,9 @@ make_microduck_velocity_env_cfg; only what the body forces is overridden:
   - robot entity (12 servos, STS3215 actuators, rooster masses)
   - head pose command 4D -> 2D (neck_pitch, head_pitch)
   - spawn height for the longer legs
-Observation layout becomes 3 twist + 2 head + 6 body commands (59 dims instead
-of the duck's 61), so rooster policies are not interchangeable with duck ones.
+Actor obs is 53D (ang_vel 3 + gravity 3 + 12 joint pos/vel/last action each +
+3 twist + 2 head + 6 body commands) and actions 12D, vs the duck's 61D -> 14D,
+so rooster policies are not interchangeable with duck ones.
 """
 
 from copy import deepcopy
