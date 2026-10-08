@@ -139,10 +139,10 @@ from our runs and no NaN termination.
 
 | # | Stage | Job | wandb run | Checkpoint used | Notes |
 | --- | --- | --- | --- | --- | --- |
-| S1 | smoke: walk teacher | | | | |
-| S2 | smoke: stand teacher | | | | |
-| S3 | smoke: VelStand Flat (warm start + teachers) | | | | |
-| S4 | smoke: VelStand Rough-Backlash | | | | |
+| S1 | smoke: walk teacher | `6ac7f1b5` ✅ | `duc0vnss` | `model_4.pt` | 2026-10-08, 64 envs × 5 iters, exit 0 |
+| S2 | smoke: stand teacher | `6ac7f1bb` ✅ | `bs3ed7ur` | `model_4.pt` | 2026-10-08, 64 envs × 5 iters, exit 0 |
+| S3 | smoke: VelStand Flat (warm start + teachers) | `6ac7f538` ✅ | `o5x08egh` | `model_4.pt` | warm start from S1; BC on with S1 (anchor) + S2 (stand) loaded from our runs; no NaN; ONNX auto-export OK |
+| S4 | smoke: VelStand Rough-Backlash | `6ac7f66e` ✅ | `alnpb06v` | `model_4.pt` | warm start from S3; same teachers; no NaN; ONNX auto-export OK |
 | 1 | walk teacher | | | | |
 | 2 | stand-up teacher | | | | |
 | 3 | VelStand v1 | | | | |
