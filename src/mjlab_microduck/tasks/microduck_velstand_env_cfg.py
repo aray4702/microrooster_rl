@@ -364,6 +364,50 @@ TRACK_YAW_FINE_WEIGHT = 2.0
 TURN_IN_PLACE_FRACTION_VELSTAND = 0.2    # velocity recipe: 0.15
 TURN_IN_PLACE_MIN_FRAC = 0.1             # velocity recipe: 0.4
 
+# Stand-up coverage (2026-10-07, branch improve_standup_velstand). Robot: get-ups
+# sometimes fail, and the robot sometimes stays stuck without trying again.
+# Measured on v7 (j4i6yoq2@1250, claude_experiments/velstand_rise_battery.py,
+# backlash, 12 s, 256 starts per family): 100 % from the ±90° HOME-joint spawns
+# training uses, but face-up with random joints 74 % (26 % STUCK = not trying),
+# side 86 %, random orientation 89 %, sitting 88 %. Every stuck v7 run on the back
+# ends in ONE attractor that the policy actively holds: tilt ~96°, head_yaw
+# commanded to −1.56 rad (always negative), left hip_roll driven into its limit.
+# A face-up start with only head_yaw at −1.0..−1.7 freezes 17 % (+yaw: 0 %).
+# alpha_stand has the same attractor (50-70 % of its own stuck runs) and the
+# student copies it at BC coef 1.0 (runs 5/6 plateaued at the teacher's ceiling
+# on post-fall spawns for the same reason). Fixes:
+#   - HEAD-MASKED TEACHER: on frames tilted beyond HEAD_MASK_TILT_DEG the stand
+#     expert is fed the obs with its head joint pos / vel / last action zeroed
+#     (= HOME). Emulated on alpha_stand (backlash, 256 starts/family): random-joint
+#     face-up 90 → 95 %, random orientation 89 → 95 %, limp power-on 93 → 96 %,
+#     sitting 84 → 89 %, ±90° HOME spawns unchanged (98-100 %). Gate at 60°, NOT
+#     the 35° BC gate: masking during the end of the rise broke it (face-down
+#     100 → 73 % — the expert uses its head there). A pure function of the obs,
+#     so BC labels stay consistent (a time-since-fall gate would give the same
+#     obs two different labels).
+#     FAILED FIRST TRY (local 400 iters from j4i6@1250): dropping the teacher label
+#     on envs down > 3 s (PPO alone there) made it WORSE everywhere (rj face-up
+#     74 → 62 %, even ±90° side 100 → 88 %): with no label, PPO's cheapest answer in
+#     a hard state is to lie still (the fallen tax is paid either way) and that
+#     spread to nearby states — the run-1/2 lesson again;
+#   - WIDER SPAWNS in the same 45 % prone slice: random servo joints (head
+#     included) on half of it, a quarter of it at a uniformly random orientation,
+#     plus a small sitting slice — the states where the freeze happens.
+ENABLE_HEAD_MASKED_TEACHER = True
+HEAD_MASK_TILT_DEG = 60.0
+# Flat 61D actor obs: ang_vel 0:3, gravity 3:6, joint_pos 6:20, joint_vel 20:34, last action 34:48;
+# head/neck = servos 5-8 (neck_pitch, head_pitch, head_yaw, head_roll).
+HEAD_OBS_COLS = tuple(range(6 + 5, 6 + 9)) + tuple(range(20 + 5, 20 + 9)) + tuple(range(34 + 5, 34 + 9))
+ENABLE_WIDE_SPAWNS = True
+WIDE_JOINT_RANDOM_PROB = 0.5    # share of the prone slice with random servo joints
+WIDE_JOINT_RANGE_FRAC = 0.9
+WIDE_SO3_PROB = 0.25            # share of the prone slice at a uniformly random orientation (always random joints)
+WIDE_SIT_PROB = 0.05            # exclusive sitting slice (of all resets)
+SIT_JOINT_OVERRIDES = {         # sitstand's stable SIT keyframe (servo indices)
+    1: 0.0, 2: -0.4079, 3: 1.35, 4: 0.0,
+    10: 0.0, 11: 0.4079, 12: -1.35, 13: 0.0,
+}
+
 # Run-1 fix (1): smoothness taxes scaled down while fallen so get-up attempts
 # are affordable; full weight while upright (the walk's smoothness is untouched).
 FALLEN_SMOOTHNESS_SCALE = 0.1
@@ -734,6 +778,21 @@ def make_microduck_velstand_env_cfg(play: bool = False, rough: bool = False) -> 
             "prone_z_min": 0.05,
             "prone_z_max": 0.09,
             "crouch_prob": 0.0,       # ramped by the prone_init_prob curriculum
+            # Stand-up coverage (ENABLE_WIDE_SPAWNS). Not in the curriculum stages, so
+            # event_param_curriculum's shallow merge leaves them as set here.
+            **({
+                "joint_random_prob": WIDE_JOINT_RANDOM_PROB,
+                "joint_range_frac": WIDE_JOINT_RANGE_FRAC,
+                "so3_prob": WIDE_SO3_PROB,
+                "sit_prob": WIDE_SIT_PROB,
+                "sit_params": {
+                    "sitting_joint_overrides": SIT_JOINT_OVERRIDES,
+                    "sitting_joint_noise_std": 0.15,
+                    "sitting_tilt_max": math.radians(20),
+                    "sitting_z_min": 0.06,
+                    "sitting_z_max": 0.09,
+                },
+            } if ENABLE_WIDE_SPAWNS else {}),
         },
     )
 
@@ -880,6 +939,7 @@ MicroduckVelStandRlCfg = RslRlOnPolicyRunnerCfg(
             **default_bc_cfg(), "coef": EXPERT_BC_COEF, "gate_tilt_deg": EXPERT_BC_GATE_TILT_DEG,
             **({"body_slice": (55, 61)} if ENABLE_BODY_CONTROL else {}),
             **({"unanchor_turn_in_place": True} if ENABLE_YAW_FIX else {}),
+            **({"expert_mask_cols": HEAD_OBS_COLS, "expert_mask_tilt_deg": HEAD_MASK_TILT_DEG} if ENABLE_HEAD_MASKED_TEACHER else {}),
         } if ENABLE_EXPERT_BC else None,
     ),
     wandb_project="mjlab_microduck",

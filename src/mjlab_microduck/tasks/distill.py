@@ -96,6 +96,18 @@ def default_bc_cfg() -> dict:
         "unanchor_turn_in_place": False,
         "body_active_axes": (2, 3, 4),
         "body_no_teacher_axes": (2,),
+        # Flat actor-obs columns ZEROED in the stand expert's input on fallen frames (tilt >
+        # gate_tilt_deg; never on body-control frames). Zero = HOME for joint_pos_rel / zero
+        # velocity / zero last action. 2026-10 (branch improve_standup_velstand): alpha_stand
+        # freezes on its back holding head_yaw at −1.6 rad — a fixed point it reads off its own
+        # head joints. Fed head-masked obs it gets up 95-100 % from random-joint / random-
+        # orientation / sitting starts (vs 84-91 %), unchanged from trained spawns (emulated).
+        # The mask is a pure function of the obs, so labels stay consistent. Only frames tilted
+        # beyond expert_mask_tilt_deg are masked: masking from the 35° BC gate broke the END of
+        # the rise (the expert uses its head mid-rise: face-down 100 → 73 %); from 60° it is
+        # neutral on trained spawns and fixes the freeze (emulated, alpha_stand).
+        "expert_mask_cols": (),
+        "expert_mask_tilt_deg": 60.0,
     }
 
 
@@ -138,9 +150,16 @@ def body_frame_masks(
     return frames, frames_teach
 
 
-def expert_input(obs: torch.Tensor, twist_slice: tuple[int, int]) -> torch.Tensor:
+def expert_input(
+    obs: torch.Tensor, twist_slice: tuple[int, int],
+    mask_cols: tuple[int, ...] = (), mask_rows: torch.Tensor | None = None,
+) -> torch.Tensor:
     out = obs.clone()
     out[:, twist_slice[0]:twist_slice[1]] = 0.0
+    if mask_cols and mask_rows is not None and mask_rows.any():
+        cols = torch.as_tensor(mask_cols, device=obs.device, dtype=torch.long)
+        rows = mask_rows.nonzero().flatten()
+        out[rows.unsqueeze(1), cols.unsqueeze(0)] = 0.0
     return out
 
 
@@ -213,6 +232,7 @@ class PpoWithExpertBc(PPO):
         stats = {"expert_bc_fallen_frac": fallen.float().mean().item(), "expert_bc_anchor_frac": upright.float().mean().item(),
                  "expert_bc_body_teach_frac": body_teach.float().mean().item(),
                  "expert_bc_turn_free_frac": turn_free.float().mean().item()}
+        tilted = fallen_mask_from_obs(flat, gsl, cfg.get("expert_mask_tilt_deg", 60.0)) & fallen  # expert_mask_cols rows
         fallen = fallen | body_teach
         if fallen.sum().item() < cfg["min_samples"]:
             fallen = torch.zeros_like(fallen)  # too few fallen frames: anchor-only pass (or nothing)
@@ -223,13 +243,15 @@ class PpoWithExpertBc(PPO):
             return stats
         obs_td = obs_td[idx]
         fallen = fallen[idx]
+        tilted = tilted[idx]
         weight = torch.where(fallen, torch.full_like(fallen, cfg["coef"], dtype=torch.float),
                              torch.full_like(fallen, cfg.get("anchor_coef", 0.0), dtype=torch.float))
         with torch.no_grad():
             target = torch.zeros(idx.numel(), self.storage.actions.shape[-1], device=self.device)
             if fallen.any():
                 exp_td = obs_td[fallen].clone()
-                exp_flat = expert_input(torch.cat([exp_td[g] for g in groups], dim=-1), tuple(cfg["twist_slice"]))
+                exp_flat = expert_input(torch.cat([exp_td[g] for g in groups], dim=-1), tuple(cfg["twist_slice"]),
+                                        tuple(cfg.get("expert_mask_cols", ())), tilted[fallen])
                 off = 0
                 for g in groups:  # rebuild the groups from the twist-zeroed flat obs
                     d = exp_td[g].shape[-1]

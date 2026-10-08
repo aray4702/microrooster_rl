@@ -274,9 +274,14 @@ class _Sim:
     def __init__(self, n): self.data = _SimData(n)
 
 
+class _FlatScene(dict):
+    def __init__(self, n):
+        super().__init__(robot=object()); self.env_origins = torch.zeros(n, 3)
+
+
 class _SpawnEnv:
     def __init__(self, n):
-        self.num_envs = n; self.device = "cpu"; self.sim = _Sim(n); self.scene = {"robot": object()}
+        self.num_envs = n; self.device = "cpu"; self.sim = _Sim(n); self.scene = _FlatScene(n)
 
 
 def _tilt_and_axes(q):
@@ -371,7 +376,9 @@ def test_reference_recipe_constants():
     assert vs.EXPERT_BC_COEF == 1.0 and vs.FALLEN_SMOOTHNESS_SCALE == 0.1
     assert vs.SERVO_STALL_WEIGHT == -0.05 and vs.GENTLE_RISE_WEIGHT == 0.005
     p = vs.make_microduck_velstand_env_cfg().events["random_prone_init"].params
-    assert p.get("joint_random_prob", 0.0) == 0.0  # post-fall-like spawns OFF in the reference recipe
+    # post-fall-like spawns were OFF in the reference recipe; the 2026-10 stand-up coverage turns them
+    # back on together with the head-masked teacher (runs 5/6 failed on the teacher label, not the spawns)
+    assert p.get("joint_random_prob", 0.0) == (vs.WIDE_JOINT_RANDOM_PROB if vs.ENABLE_WIDE_SPAWNS else 0.0)
 
 
 def test_randomize_servo_joints_uniform_respects_limits(monkeypatch):
@@ -469,3 +476,85 @@ def test_yaw_fix_wired():
     tw = cfg.commands["twist"]
     assert tw.turn_in_place_min_frac == vs.TURN_IN_PLACE_MIN_FRAC and tw.rel_turn_in_place_envs == vs.TURN_IN_PLACE_FRACTION_VELSTAND
     assert vs.MicroduckVelStandRlCfg.algorithm.bc_cfg["unanchor_turn_in_place"] is True
+
+
+# ── 2026-10 stand-up coverage: wide spawns + head-masked teacher ─────────────
+
+def test_wide_spawns_wired():
+    p = vs.make_microduck_velstand_env_cfg().events["random_prone_init"].params
+    if not vs.ENABLE_WIDE_SPAWNS:
+        assert p.get("so3_prob", 0.0) == 0.0 and p.get("sit_prob", 0.0) == 0.0
+        return
+    assert p["so3_prob"] == vs.WIDE_SO3_PROB and p["sit_prob"] == vs.WIDE_SIT_PROB
+    assert p["sit_params"]["sitting_joint_overrides"] == vs.SIT_JOINT_OVERRIDES
+    # the curriculum stages must not overwrite the coverage params (shallow merge)
+    for st in vs.PRONE_RAMP_STAGES:
+        assert not {"joint_random_prob", "so3_prob", "sit_prob"} & set(st["params"])
+    # total spawn slice stays bounded so walking keeps the majority of resets
+    final = vs.PRONE_RAMP_STAGES[-1]["params"]
+    assert final["prone_prob"] + final["crouch_prob"] + p["sit_prob"] <= 0.75
+
+
+def test_so3_spawns_are_random_orientations_with_random_joints(monkeypatch):
+    torch.manual_seed(0)
+    n = 512
+    env = _SpawnEnv(n)
+    jr_ids = []
+    monkeypatch.setattr(microduck_mdp, "randomize_servo_joints_uniform", lambda e, ids, **k: jr_ids.append(ids.clone()))
+    microduck_mdp.maybe_set_random_prone_orientation(env, torch.arange(n), prone_prob=1.0, prone_z_min=0.07, prone_z_max=0.07,
+                                                    so3_prob=1.0, so3_extra_z=0.04, joint_random_extra_z=0.06)
+    q = env.sim.data.qpos[:, 3:7]
+    assert torch.allclose(q.norm(dim=1), torch.ones(n), atol=1e-5)
+    tilt, _, _ = _tilt_and_axes(q)
+    # uniform on SO(3): cos(tilt) uniform on [-1, 1] → tilt spread over the whole range, not ±90° only
+    assert (tilt < 45).float().mean() > 0.1 and (tilt > 135).float().mean() > 0.1
+    assert len(jr_ids) == 1 and jr_ids[0].numel() == n  # every so3 spawn gets random joints
+    assert torch.allclose(env.sim.data.qpos[:, 2], torch.full((n,), 0.07 + 0.04 + 0.06), atol=1e-6)
+
+
+def test_sit_slice_is_exclusive(monkeypatch):
+    torch.manual_seed(0)
+    n = 2000
+    env = _SpawnEnv(n)
+    got = {}
+    monkeypatch.setattr(microduck_mdp, "set_random_ground_state", lambda e, ids, **k: got.update(ids=ids.clone(), k=k))
+    monkeypatch.setattr(microduck_mdp, "set_random_crouch_state", lambda e, ids, **k: got.update(crouch=ids.clone()))
+    microduck_mdp.maybe_set_random_prone_orientation(env, torch.arange(n), prone_prob=0.4, crouch_prob=0.2, sit_prob=0.1,
+                                                    prone_z_min=0.07, prone_z_max=0.07, sit_params={"sitting_z_min": 0.06})
+    assert abs(got["ids"].numel() / n - 0.1) < 0.03 and got["k"]["sitting_prob"] == 1.0 and got["k"]["sitting_z_min"] == 0.06
+    assert not set(got["ids"].tolist()) & set(got["crouch"].tolist())
+    tilt, _, _ = _tilt_and_axes(env.sim.data.qpos[:, 3:7])
+    assert not set(got["ids"].tolist()) & set(torch.nonzero(tilt > 89).flatten().tolist())  # not also prone
+
+
+def test_expert_input_masks_only_selected_rows():
+    from mjlab_microduck.tasks.distill import expert_input
+    obs = torch.ones(3, 61)
+    out = expert_input(obs, (48, 51), mask_cols=vs.HEAD_OBS_COLS, mask_rows=torch.tensor([True, False, True]))
+    assert (out[:, 48:51] == 0).all()                       # twist always zeroed for the stand expert
+    assert (out[0, list(vs.HEAD_OBS_COLS)] == 0).all() and (out[1, list(vs.HEAD_OBS_COLS)] == 1).all()
+    others = [c for c in range(61) if c not in vs.HEAD_OBS_COLS and not 48 <= c < 51]
+    assert (out[:, others] == 1).all()
+    assert (obs == 1).all()                                 # input untouched
+
+
+def test_head_obs_cols_are_the_neck_servos():
+    """joint_pos 6:20, joint_vel 20:34, last action 34:48; servos 5-8 = neck_pitch, head_pitch, head_yaw, head_roll."""
+    assert vs.HEAD_OBS_COLS == (11, 12, 13, 14, 25, 26, 27, 28, 39, 40, 41, 42)
+    cfg = vs.make_microduck_velstand_env_cfg()
+    assert list(cfg.observations["actor"].terms)[:5] == ["base_ang_vel", "projected_gravity", "joint_pos", "joint_vel", "actions"]
+    m = get_allcollisions_spec().compile()
+    names = [mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(1, m.njnt)]  # skip the free joint
+    servos = [n for n in names if not n.startswith("passive_")]
+    assert servos[5:9] == ["neck_pitch", "head_pitch", "head_yaw", "head_roll"]
+
+
+def test_head_masked_teacher_wired():
+    bc = vs.MicroduckVelStandRlCfg.algorithm.bc_cfg
+    if vs.ENABLE_HEAD_MASKED_TEACHER:
+        assert tuple(bc["expert_mask_cols"]) == vs.HEAD_OBS_COLS
+        # masking from the 35° BC gate broke the end of the rise (emulated) — keep it well above
+        assert bc["expert_mask_tilt_deg"] == vs.HEAD_MASK_TILT_DEG >= 55.0 > bc["gate_tilt_deg"]
+    else:
+        assert not bc.get("expert_mask_cols")
+    assert bc["coef"] == 1.0 and bc["anchor_coef"] == 1.0  # teacher strengths unchanged
