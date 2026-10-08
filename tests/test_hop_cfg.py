@@ -1444,3 +1444,38 @@ def test_hoplocked_is_a_valid_rigid_control():
     assert set(lock.rewards) == shared
     for name in shared:
         assert lock.rewards[name].weight == free.rewards[name].weight, name
+
+
+def test_airtime_sensor_has_no_exclusions_so_airborne_means_zero_contact():
+    """True airtime is NO contact anywhere, not "the two pads report clear".
+
+    `feet_ground_contact` watches only the foot pads, so a robot that tilts its
+    feet up and rests on its ANKLES reads as airborne indefinitely. The rigid
+    arm learned exactly that: measured 86.3% "airborne" by the pad sensor
+    against 3.1% by true contact, 0.00 mm of ballistic rise, trunk squatting at
+    85 mm against the 145 mm it stands at -- upright throughout, trunk never
+    touching, so every other gate passed and the reward paid 1.52 for standing.
+
+    `body_ground_contact` cannot be reused for this: it EXCLUDES the boots and
+    ankles on purpose, because it answers "is this a fall?" and the standard arm
+    lands on its ankles legitimately. The airtime sensor answers a different
+    question, so it must exclude nothing.
+    """
+    from mjlab.tasks.registry import load_env_cfg
+    from mjlab_microduck.tasks.hop import ALL_CONTACT_SENSOR_NAME, BODY_SENSOR_NAME
+
+    for tid in ("Mjlab-HopFree-S50-DR-Sym-K3344-MicroDuck",
+                "Mjlab-HopSoft-S50-DR-Sym-K1200-MicroDuck",
+                "Mjlab-HopLocked-S50-DR-Sym-Locked-MicroDuck"):
+        cfg = load_env_cfg(tid)
+        by_name = {s.name: s for s in cfg.scene.sensors if hasattr(s, "name")}
+        assert ALL_CONTACT_SENSOR_NAME in by_name, (tid, sorted(by_name))
+        allc = by_name[ALL_CONTACT_SENSOR_NAME]
+        # The whole point: nothing is excused from counting as ground contact.
+        assert not getattr(allc.primary, "exclude", None), (tid, allc.primary.exclude)
+        assert allc.primary.pattern == r".*"
+        assert allc.primary.entity == "robot"
+        # The fall sensor must KEEP its exclusions -- different question.
+        body = by_name[BODY_SENSOR_NAME]
+        assert getattr(body.primary, "exclude", None), tid
+        assert allc is not body

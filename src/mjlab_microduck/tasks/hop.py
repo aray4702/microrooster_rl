@@ -204,6 +204,9 @@ SENSOR_NAME = "feet_ground_contact"
 # The rule this encodes: THE ONLY PARTS ALLOWED TO TOUCH THE GROUND ARE THE
 # SPRING BOOTS. Anything else is a fall.
 BODY_SENSOR_NAME = "body_ground_contact"
+# Every robot body vs the ground, no exclusions: used to define AIRTIME,
+# which is a different question from "is this a fall?". See the sensor.
+ALL_CONTACT_SENSOR_NAME = "all_ground_contact"
 
 # Bodies allowed to touch the ground: the boots, and the ankles they hang from.
 #
@@ -437,6 +440,28 @@ def add_boots_only_ground_contact(cfg: ManagerBasedRlEnvCfg) -> ManagerBasedRlEn
                 entity="robot",
                 exclude=_GROUND_CONTACT_ALLOWED,
             ),
+            secondary=ContactMatch(mode="body", pattern="terrain"),
+            fields=("found",),
+            reduce="none",
+            num_slots=1,
+        ),
+        # A SECOND sensor with NO exclusions, for the airtime reward.
+        #
+        # The one above answers "is this a fall?" and therefore excludes the
+        # boots and the ankles. The reward needs a different question -- "is the
+        # robot off the ground?" -- and for that any exclusion is a loophole.
+        # `feet_ground_contact` watches only the two pads, and the rigid arm
+        # duly learned to tilt its feet up and rest on its ANKLES: pads at
+        # 32.6 mm sitting above the ankles at 17.9 mm, trunk squatting at 85 mm
+        # against the 145 mm it stands at, 86% "airborne", 0.00 mm median rise,
+        # upright throughout and never touching with its trunk, so every gate
+        # passed and hop_mean_airtime paid it 1.52 for standing still.
+        #
+        # True airtime is zero contacts. The simulator knows them exactly, so
+        # there is no reason to infer it from a subset of geoms.
+        ContactSensorCfg(
+            name=ALL_CONTACT_SENSOR_NAME,
+            primary=ContactMatch(mode="body", pattern=r".*", entity="robot"),
             secondary=ContactMatch(mode="body", pattern="terrain"),
             fields=("found",),
             reduce="none",

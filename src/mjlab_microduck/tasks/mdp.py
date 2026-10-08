@@ -7530,6 +7530,35 @@ def joint_limit_proximity(
     return -torch.sum(torch.square(over), dim=1)
 
 
+def _nothing_touching_ground(env, sensor_name: str = "all_ground_contact"):
+    """True airtime: NO robot geom in contact with the ground, not "the pads read clear".
+
+    `feet_ground_contact` watches only the two foot pads, so a robot that tilts
+    its feet up and rests on its ANKLES reads as "both feet off the ground"
+    indefinitely. The rigid arm found exactly that: pads at 32.6 mm sitting
+    ABOVE the ankles at 17.9 mm, trunk squatting at 85 mm against the 145 mm it
+    stands at, 86% "airborne", 0.00 mm median rise, upright the whole time and
+    never touching the ground with its trunk -- so every gate passed.
+
+    The ankles cannot just be added to `body_ground_contact`: they are excluded
+    there deliberately, because that sensor encodes "only the boots may touch"
+    for TERMINATION, and the standard arm lands on its ankles legitimately. This
+    is a separate sensor with no exclusions at all, because the question here is
+    different -- not "is this a fall?" but "is the robot off the ground?"
+
+    Returns None if the sensor is absent, so callers can fall back.
+    """
+    try:
+        sensor = env.scene[sensor_name]
+    except KeyError:
+        return None
+    found = getattr(sensor.data, "found", None)
+    if found is None:
+        return None
+    touching = (found.sum(dim=-1) > 0) if found.dim() > 1 else (found > 0)
+    return ~touching
+
+
 class hop_mean_airtime:
     """Pay the MEAN FLIGHT DURATION of each hop, once per landing.
 
@@ -7595,17 +7624,23 @@ class hop_mean_airtime:
         min_air_s: float = 0.04,
         max_tilt: float = 0.8727,
         ref_s: float = 0.1,
+        all_contact_sensor: str = "all_ground_contact",
     ) -> torch.Tensor:
         zeros = torch.zeros(env.num_envs, device=env.device)
-        air = _both_feet_airborne(env, sensor_name)
-        if air is None:
-            return zeros
-        airborne = air > 0.5
+        # Prefer the no-contact-anywhere test; fall back to the pad sensor only
+        # if the complete sensor is absent (older cfgs).
+        airborne = _nothing_touching_ground(env, all_contact_sensor)
+        if airborne is None:
+            air = _both_feet_airborne(env, sensor_name)
+            if air is None:
+                return zeros
+            airborne = air > 0.5
 
         cmd = env.command_manager.get_command(command_name)
         enabled = torch.nan_to_num(cmd[:, 2], nan=0.0) > 0.5
         took_off = airborne & (self._air_steps <= 0)
         self._enabled_at_takeoff = torch.where(took_off, enabled, self._enabled_at_takeoff)
+
         self._air_steps = torch.where(airborne, self._air_steps + 1.0, self._air_steps)
 
         landed = (~airborne) & (self._air_steps > 0)
@@ -7618,7 +7653,8 @@ class hop_mean_airtime:
             upright = torch.arccos(torch.clamp(-gz, -1.0, 1.0)) < max_tilt
 
         flight_s = self._air_steps * env.step_dt
-        paid = landed & upright & self._enabled_at_takeoff & (flight_s >= min_air_s)
+        paid = (landed & upright & self._enabled_at_takeoff
+                & (flight_s >= min_air_s))
         # PAY IN UNITS OF `ref_s`, NOT RAW SECONDS. This is a scale fix, not a
         # shaping change: it is one constant factor, so it cannot alter which
         # behaviour is optimal, only how loudly the term speaks. Paying raw
