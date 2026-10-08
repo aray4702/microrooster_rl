@@ -7,6 +7,14 @@ commented. This sets a key whether it is present, commented, or missing, and
 prints a before/after so the change is visible in the terminal that made it.
 
     sudo python3 patch_robotd_toml.py walk=hopfree.onnx gain=400 ...
+    sudo python3 patch_robotd_toml.py sitstand=!unset
+
+`key=!unset` COMMENTS THE KEY OUT rather than deleting it, which is what the
+hop/walk switch needs to be a true inverse: the hop setup sets
+`sitstand = "none"` and normal operation has no such line at all (verified
+against the pre-boot backup). Commenting rather than deleting keeps the file
+self-documenting, and the "revive a commented default" path above brings it
+straight back when the key is next set.
 """
 import re
 import shutil
@@ -34,6 +42,15 @@ def main(argv: list[str]) -> int:
     text = original
 
     for key, value in pairs:
+        if value == "!unset":
+            active = re.compile(rf"^(\s*)({re.escape(key)}\s*=.*)$", re.M)
+            m = active.search(text)
+            if m:
+                text = active.sub(r"\1# \2", text, count=1)
+                print(f"  {key:16s} {m.group(0).strip()}  ->  # (unset)")
+            else:
+                print(f"  {key:16s} <absent or already unset>  ->  # (unset)")
+            continue
         # An active assignment wins; otherwise revive a commented default;
         # otherwise append. Matching the commented form matters because the
         # shipped file documents every default as a comment.

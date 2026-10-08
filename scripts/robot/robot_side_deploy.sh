@@ -13,6 +13,11 @@ for f in /tmp/*.onnx; do
   [ -f "$f" ] && sudo cp "$f" "$POLDIR/" && echo "installed $(basename "$f")"
 done
 
+# THE TWO BRANCHES MUST BE EXACT INVERSES. They were not: hop set
+# `sitstand = "none"` and walk never cleared it, so "restore walking" left
+# sit/stand disabled indefinitely. Normal operation has NO sitstand line at all
+# (verified against the pre-boot backup robotd.toml.bak-hop-131923), hence
+# `sitstand=!unset` below. Any key one branch sets, the other must set or unset.
 if [ "$MODE" = "hop" ]; then
   # legs_lowpass is the one that matters: the gait runs at ~8.5 Hz and 0.85 at
   # 50 Hz cuts off near 1.4 Hz, attenuating it about sixfold. Training is
@@ -30,7 +35,8 @@ else
       stand="\"$POLDIR/alpha_stand.onnx\"" \
       gain=200 action_scale=0.9 \
       legs_lowpass=0.7 head_lowpass=0.5 \
-      limp_fall=true cmd_alpha=1.0
+      limp_fall=true cmd_alpha=1.0 \
+      sitstand=!unset
   sudo systemctl start padd || true
 fi
 
