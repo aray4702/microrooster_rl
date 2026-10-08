@@ -15,6 +15,8 @@ What changes vs robot_walk.xml (rough sim prototype, not a CAD export):
     housing positions, so body CoM/inertia move the right way.
   - Legs: thigh and shin link offsets stretched by LEG_SCALE (meshes are not
     stretched — expect visual gaps at the knee and ankle).
+  - Head: squeezed laterally to HEAD_WIDTH_SCALE of the duck's width (meshes,
+    part offsets, inertia); head mass unchanged.
   - Rooster parts: comb, wattle and tail as visual-only geoms whose mass is
     folded into the parent body's inertia.
 
@@ -40,6 +42,15 @@ REMOVED_JOINTS = ("head_yaw", "head_roll")
 REMOVED_SERVO_BODIES = ("yaw_roll_motion", "jaw_soft")
 # Thigh and shin links: the child body's offset is the link vector.
 LEG_LINK_BODIES = ("leg", "ankle_left", "leg_2", "ankle_right")
+
+# Head width (lateral, world y at STAND) as a fraction of the duck's. Meshes,
+# part offsets and the mass distribution are squeezed; head mass is kept
+# (the electronics in it don't shrink).
+HEAD_WIDTH_SCALE = 0.5
+HEAD_BODIES = ("yaw_roll_motion", "jaw_soft")
+# Rigid parts (the camera: lens, M12 holder, bezel ring) keep their shape and
+# only move with the squeeze — a round lens doesn't become an oval one.
+RIGID_HEAD_MESHES = ("lens", "m12_lens_holder", "noenoeil")
 
 COMB_MASS = 0.012
 WATTLE_MASS = 0.004
@@ -113,9 +124,17 @@ def servo_positions(model, body_id):
             continue
         if model.geom_type[g] != mujoco.mjtGeom.mjGEOM_MESH or model.geom_contype[g] != 0:
             continue
-        if mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_MESH, model.geom_dataid[g]) == "xl330":
+        mesh = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_MESH, model.geom_dataid[g])
+        if mesh == "xl330" or mesh.startswith("xl330_"):  # incl. narrow head copies
             out.append(model.geom_pos[g].copy())
     return out
+
+
+def mesh_geom_world_verts(model, data, g):
+    mesh = model.geom_dataid[g]
+    start, n = model.mesh_vertadr[mesh], model.mesh_vertnum[mesh]
+    verts = model.mesh_vert[start:start + n]
+    return verts @ data.geom_xmat[g].reshape(3, 3).T + data.geom_xpos[g]
 
 
 def subtree_visual_aabb(model, data, root_name, own_only=False):
@@ -128,10 +147,7 @@ def subtree_visual_aabb(model, data, root_name, own_only=False):
             b = model.body_parentid[b]
         if b != root or model.geom_type[g] != mujoco.mjtGeom.mjGEOM_MESH:
             continue
-        mesh = model.geom_dataid[g]
-        start, n = model.mesh_vertadr[mesh], model.mesh_vertnum[mesh]
-        verts = model.mesh_vert[start:start + n]
-        world = verts @ data.geom_xmat[g].reshape(3, 3).T + data.geom_xpos[g]
+        world = mesh_geom_world_verts(model, data, g)
         lo, hi = np.minimum(lo, world.min(0)), np.maximum(hi, world.max(0))
     return lo, hi
 
@@ -139,6 +155,66 @@ def subtree_visual_aabb(model, data, root_name, own_only=False):
 def world_to_body(data, body_id, p):
     r = data.xmat[body_id].reshape(3, 3)
     return r.T @ (np.asarray(p) - data.xpos[body_id])
+
+
+def narrow_head(spec, model, data, scale):
+    """Squeeze the head bodies along world y (at STAND) about the head's midplane.
+
+    Each mesh gets a per-geom copy scaled on whichever mesh axis maps to world
+    y (shared meshes like xl330 are used elsewhere too); geom/site/camera
+    offsets and the body inertia are squeezed the same way, mass unchanged.
+    """
+    lo, hi = subtree_visual_aabb(model, data, HEAD_BODIES[0])
+    mid = np.array([0.0, 0.5 * (lo[1] + hi[1]), 0.0])
+    y = np.array([0.0, 1.0, 0.0])
+    for body_name in HEAD_BODIES:
+        b = model.body(body_name).id
+        r_body = data.xmat[b].reshape(3, 3)
+        a = r_body.T @ y  # lateral axis in the body frame
+        squeeze = np.eye(3) + (scale - 1.0) * np.outer(a, a)
+        p0 = world_to_body(data, b, mid)
+        body = spec.body(body_name)
+
+        for elem in list(body.sites) + list(body.cameras):
+            elem.pos = p0 + squeeze @ (np.asarray(elem.pos) - p0)
+        for i, geom in enumerate(body.geoms):
+            if geom.type != mujoco.mjtGeom.mjGEOM_MESH or geom.meshname in RIGID_HEAD_MESHES:
+                # Unscaled: shift so the part's visual centre lands where the
+                # squeeze puts it (its mesh origin may sit off-centre).
+                g = model.body_geomadr[b] + i
+                if geom.type == mujoco.mjtGeom.mjGEOM_MESH:
+                    verts = mesh_geom_world_verts(model, data, g)
+                    centre = 0.5 * (verts.min(0) + verts.max(0))
+                else:
+                    centre = data.geom_xpos[g]
+                c = world_to_body(data, b, centre)
+                geom.pos = np.asarray(geom.pos) + (squeeze - np.eye(3)) @ (c - p0)
+                continue
+            geom.pos = p0 + squeeze @ (np.asarray(geom.pos) - p0)
+            axis = quat_to_mat(geom.quat).T @ a  # lateral axis in the mesh frame
+            k = int(np.argmax(np.abs(axis)))
+            assert abs(axis[k]) > 0.999, f"{body_name} geom {i}: mesh not axis-aligned"
+            src = spec.mesh(geom.meshname)
+            mesh_scale = np.array(src.scale)
+            mesh_scale[k] *= scale
+            name = f"{geom.meshname}_{body_name}_{i}_narrow"
+            spec.add_mesh(name=name, file=src.file, scale=mesh_scale)
+            geom.meshname = name
+
+        # Mass distribution: second moments squeezed along the lateral axis.
+        r_i = quat_to_mat(model.body_iquat[b])
+        inertia = r_i @ np.diag(model.body_inertia[b]) @ r_i.T
+        second = 0.5 * np.trace(inertia) * np.eye(3) - inertia
+        second = squeeze @ second @ squeeze.T
+        evals, evecs = np.linalg.eigh(np.trace(second) * np.eye(3) - second)
+        if np.linalg.det(evecs) < 0:
+            evecs[:, 0] *= -1
+        body.explicitinertial = True
+        body.fullinertia = [np.nan] * 6
+        body.mass = model.body_mass[b]
+        body.ipos = p0 + squeeze @ (model.body_ipos[b] - p0)
+        body.iquat, body.inertia = mat_to_quat(evecs), evals
+    return hi[1] - lo[1]
 
 
 def stand_qpos(model, z):
@@ -171,6 +247,13 @@ def main():
         body.pos = np.asarray(body.pos) * LEG_SCALE
 
     # Compile once to measure geometry at the STAND pose.
+    model = spec.compile()
+    data = mujoco.MjData(model)
+    data.qpos[:] = stand_qpos(model, 0.2)
+    mujoco.mj_forward(model, data)
+
+    # 2b. Narrower head; recompile so everything below measures the new head.
+    duck_head_width = narrow_head(spec, model, data, HEAD_WIDTH_SCALE)
     model = spec.compile()
     data = mujoco.MjData(model)
     data.qpos[:] = stand_qpos(model, 0.2)
@@ -275,6 +358,8 @@ def main():
     print(f"stand trunk z    {stand_z * 1000:7.1f} mm  (duck: 120.0)")
     print(f"CoM height       {com[2] * 1000:7.1f} mm  (duck: 141.7)")
     print(f"top of comb      {max(head_top, 0) * 1000:7.1f} mm")
+    print(f"head width       {(head_hi[1] - head_lo[1]) * 1000:7.1f} mm  "
+          f"(duck: {duck_head_width * 1000:.1f})")
     print(f"wrote {OUT_ROBOT.name}, {OUT_SCENE.name}")
 
 

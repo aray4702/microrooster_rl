@@ -2,7 +2,8 @@
 
 A phase-1 rough sim model of a larger sibling robot, generated from the
 Microduck walk model: 12 Feetech STS3215 servos (`head_yaw`/`head_roll`
-welded), legs stretched 15%, ~1.17 kg. Every number in it is a guess to be
+welded), legs stretched 15%, head half the duck's width (same mass),
+~1.17 kg. Every number in it is a guess to be
 replaced by CAD + scale readings.
 
 View the model holding its STAND pose (no policy; servos driven by BAM's

@@ -145,6 +145,23 @@
     <mesh name="leg" file="leg.stl"/>
     <mesh name="soft_mouth_top" file="soft_mouth_top.stl"/>
     <mesh name="m12_lens_holder" file="m12_lens_holder.stl"/>
+    <mesh name="yaw_roll_motion_yaw_roll_motion_0_narrow" content_type="model/stl" file="yaw_roll_motion.stl" scale="0.5 1 1"/>
+    <mesh name="xl330_yaw_roll_motion_1_narrow" content_type="model/stl" file="xl330.stl" scale="1 1 0.5"/>
+    <mesh name="seeed_bearing__configuration__22x16x4_yaw_roll_motion_2_narrow" content_type="model/stl" file="seeed_bearing__configuration__22x16x4.stl" scale="1 0.5 1"/>
+    <mesh name="seeed_bearing__configuration__22x16x4_yaw_roll_motion_3_narrow" content_type="model/stl" file="seeed_bearing__configuration__22x16x4.stl" scale="1 0.5 1"/>
+    <mesh name="face_part_jaw_soft_1_narrow" content_type="model/stl" file="face_part.stl" scale="0.5 1 1"/>
+    <mesh name="xl330_jaw_soft_2_narrow" content_type="model/stl" file="xl330.stl" scale="0.5 1 1"/>
+    <mesh name="jaw_soft_jaw_soft_3_narrow" content_type="model/stl" file="jaw_soft.stl" scale="0.5 1 1"/>
+    <mesh name="motor_support_jaw_soft_4_narrow" content_type="model/stl" file="motor_support.stl" scale="0.5 1 1"/>
+    <mesh name="top_head_shell_jaw_soft_5_narrow" content_type="model/stl" file="top_head_shell.stl" scale="0.5 1 1"/>
+    <mesh name="xl330_jaw_soft_6_narrow" content_type="model/stl" file="xl330.stl" scale="1 1 0.5"/>
+    <mesh name="seeed_bearing__configuration_default_jaw_soft_7_narrow" content_type="model/stl" file="seeed_bearing__configuration_default.stl" scale="1 1 0.5"/>
+    <mesh name="elec_rpi_robot_hat_pcb_jaw_soft_8_narrow" content_type="model/stl" file="elec_rpi_robot_hat_pcb.stl" scale="0.5 1 1"/>
+    <mesh name="soft_mouth_top_jaw_soft_9_narrow" content_type="model/stl" file="soft_mouth_top.stl" scale="0.5 1 1"/>
+    <mesh name="jaw_jaw_soft_11_narrow" content_type="model/stl" file="jaw.stl" scale="0.5 1 1"/>
+    <mesh name="bottom_head_shell_jaw_soft_12_narrow" content_type="model/stl" file="bottom_head_shell.stl" scale="0.5 1 1"/>
+    <mesh name="pcb__raspberry_pi_zero_2_w_jaw_soft_14_narrow" content_type="model/stl" file="pcb__raspberry_pi_zero_2_w.stl" scale="0.5 1 1"/>
+    <mesh name="speaker_jaw_soft_15_narrow" content_type="model/stl" file="speaker.stl" scale="0.5 1 1"/>
   </asset>
 
   <worldbody>
@@ -221,38 +238,38 @@
           <geom class="visual" pos="0 0.0287931 -0.0145" quat="0.5 -0.5 -0.5 -0.5" material="neck_pitch_material" mesh="neck_pitch"/>
           <geom class="visual" pos="0 0.0207931 -0.0145" quat="0.707107 0.707107 0 0" material="seeed_bearing__configuration__22x16x4_material" mesh="seeed_bearing__configuration__22x16x4"/>
           <body name="yaw_roll_motion" pos="0 0.0186931 -0.0145" quat="0 0 -0.707107 -0.707107">
-            <inertial pos="-0.000264691 -0.0038918 0.0198295" quat="0.981496 -0.138676 -0.0124811 -0.131446" mass="0.0306" diaginertia="6.45199e-06 7.6985e-06 9.62601e-06"/>
-            <geom class="visual" pos="0 0 0.01" quat="0.707107 0 0 0.707107" material="yaw_roll_motion_material" mesh="yaw_roll_motion"/>
-            <geom class="visual" pos="0 0 0.0145" quat="0.5 -0.5 -0.5 -0.5" material="xl330_material" mesh="xl330"/>
-            <geom class="visual" pos="-0.016 0 0.0145" quat="0.707107 0 -0.707107 0" material="seeed_bearing__configuration__22x16x4_material" mesh="seeed_bearing__configuration__22x16x4"/>
-            <geom class="visual" pos="0.018 0 0.0145" quat="0.707107 0 -0.707107 0" material="seeed_bearing__configuration__22x16x4_material" mesh="seeed_bearing__configuration__22x16x4"/>
+            <inertial pos="-0.000264691 -0.00194403 0.019826" quat="0.767855 -0.640267 0.00400262 -0.0209895" mass="0.0306" diaginertia="3.43857e-06 6.33457e-06 7.81897e-06"/>
+            <geom class="visual" pos="0 1.80111e-08 0.01" quat="0.707107 0 0 0.707107" material="yaw_roll_motion_material" mesh="yaw_roll_motion_yaw_roll_motion_0_narrow"/>
+            <geom class="visual" pos="0 1.80111e-08 0.0145" quat="0.5 -0.5 -0.5 -0.5" material="xl330_material" mesh="xl330_yaw_roll_motion_1_narrow"/>
+            <geom class="visual" pos="-0.016 1.80111e-08 0.0145" quat="0.707107 0 -0.707107 0" material="seeed_bearing__configuration__22x16x4_material" mesh="seeed_bearing__configuration__22x16x4_yaw_roll_motion_2_narrow"/>
+            <geom class="visual" pos="0.018 1.80111e-08 0.0145" quat="0.707107 0 -0.707107 0" material="seeed_bearing__configuration__22x16x4_material" mesh="seeed_bearing__configuration__22x16x4_yaw_roll_motion_3_narrow"/>
             <body name="jaw_soft" pos="-0.0179 0 0.0145" quat="0.707107 0 -0.707107 0">
-              <inertial pos="0.00815056 -0.000654151 -0.0380931" quat="0.0265507 -0.681349 0.00662487 0.731447" mass="0.168766" diaginertia="0.000162 0.000241791 0.000271509"/>
-              <geom class="visual" pos="0.0155 -9.13778e-05 -0.05548" quat="0.5 -0.5 0.5 -0.5" material="lens_material" mesh="lens"/>
-              <geom class="visual" pos="-0.0045 -9.13778e-05 -0.0178" quat="0.5 0.5 0.5 0.5" material="face_part_material" mesh="face_part"/>
-              <geom class="visual" pos="0.003 0.0255 -0.018" quat="0.707107 0 0 -0.707107" material="xl330_material" mesh="xl330"/>
-              <geom class="visual" pos="-0.0046 0 -0.0179996" quat="0.5 0.5 0.5 0.5" material="jaw_soft_material" mesh="jaw_soft"/>
-              <geom class="visual" pos="-0.0045 0 -0.018" quat="0.5 0.5 0.5 0.5" material="motor_support_material" mesh="motor_support"/>
-              <geom class="visual" pos="-0.0045 0 -0.018" quat="0.5 0.5 0.5 0.5" material="top_head_shell_material" mesh="top_head_shell"/>
-              <geom class="visual" pos="0 0 0.0145" quat="0.5 -0.5 -0.5 -0.5" material="xl330_material" mesh="xl330"/>
-              <geom class="visual" pos="0.0032 -0.04 -0.018" quat="0.5 -0.5 0.5 0.5" material="seeed_bearing__configuration_default_material" mesh="seeed_bearing__configuration_default"/>
-              <geom class="visual" pos="0.02694 0.0289936 -0.0519" quat="0.707107 0 0 -0.707107" material="elec_rpi_robot_hat_pcb_material" mesh="elec_rpi_robot_hat_pcb"/>
-              <geom class="visual" pos="-0.00420071 1.7776e-08 -0.0180814" quat="0.5 0.5 0.5 0.5" material="soft_mouth_top_material" mesh="soft_mouth_top"/>
-              <geom class="visual" pos="-0.0045 -9.13778e-05 -0.0178" quat="0.5 0.5 0.5 0.5" material="noenoeil_material" mesh="noenoeil"/>
-              <geom class="visual" pos="-0.0045 0 -0.018" quat="0.5 0.5 0.5 0.5" material="jaw_material" mesh="jaw"/>
-              <geom class="visual" pos="-0.0043 0 -0.018" quat="0.5 0.5 0.5 0.5" material="bottom_head_shell_material" mesh="bottom_head_shell"/>
-              <geom class="visual" pos="0.0155 -9.13778e-05 -0.05558" quat="0.5 -0.5 0.5 -0.5" material="m12_lens_holder_material" mesh="m12_lens_holder"/>
-              <geom class="visual" pos="0.015435 -1.13778e-05 -0.06001" quat="0.5 -0.5 -0.5 0.5" material="pcb__raspberry_pi_zero_2_w_material" mesh="pcb__raspberry_pi_zero_2_w"/>
-              <geom class="visual" pos="0.01 -0.016786 0.0260226" quat="0.5 0.5 0.5 0.5" material="speaker_material" mesh="speaker"/>
+              <inertial pos="0.00815056 -0.000327011 -0.0380948" quat="0.48391 0.480192 0.523351 -0.511224" mass="0.168766" diaginertia="9.02024e-05 0.000199561 0.000241787"/>
+              <geom class="visual" pos="0.0155 -4.56709e-05 -0.05548" quat="0.5 -0.5 0.5 -0.5" material="lens_material" mesh="lens"/>
+              <geom class="visual" pos="-0.0045 -4.56709e-05 -0.0178" quat="0.5 0.5 0.5 0.5" material="face_part_material" mesh="face_part_jaw_soft_1_narrow"/>
+              <geom class="visual" pos="0.003 0.01275 -0.018" quat="0.707107 0 0 -0.707107" material="xl330_material" mesh="xl330_jaw_soft_2_narrow"/>
+              <geom class="visual" pos="-0.0046 1.80111e-08 -0.0179996" quat="0.5 0.5 0.5 0.5" material="jaw_soft_material" mesh="jaw_soft_jaw_soft_3_narrow"/>
+              <geom class="visual" pos="-0.0045 1.80111e-08 -0.018" quat="0.5 0.5 0.5 0.5" material="motor_support_material" mesh="motor_support_jaw_soft_4_narrow"/>
+              <geom class="visual" pos="-0.0045 1.80111e-08 -0.018" quat="0.5 0.5 0.5 0.5" material="top_head_shell_material" mesh="top_head_shell_jaw_soft_5_narrow"/>
+              <geom class="visual" pos="0 1.80111e-08 0.0145" quat="0.5 -0.5 -0.5 -0.5" material="xl330_material" mesh="xl330_jaw_soft_6_narrow"/>
+              <geom class="visual" pos="0.0032 -0.02 -0.018" quat="0.5 -0.5 0.5 0.5" material="seeed_bearing__configuration_default_material" mesh="seeed_bearing__configuration_default_jaw_soft_7_narrow"/>
+              <geom class="visual" pos="0.02694 0.0144968 -0.0519" quat="0.707107 0 0 -0.707107" material="elec_rpi_robot_hat_pcb_material" mesh="elec_rpi_robot_hat_pcb_jaw_soft_8_narrow"/>
+              <geom class="visual" pos="-0.00420071 2.68991e-08 -0.0180814" quat="0.5 0.5 0.5 0.5" material="soft_mouth_top_material" mesh="soft_mouth_top_jaw_soft_9_narrow"/>
+              <geom class="visual" pos="-0.0045 -4.56709e-05 -0.0178" quat="0.5 0.5 0.5 0.5" material="noenoeil_material" mesh="noenoeil"/>
+              <geom class="visual" pos="-0.0045 1.80111e-08 -0.018" quat="0.5 0.5 0.5 0.5" material="jaw_material" mesh="jaw_jaw_soft_11_narrow"/>
+              <geom class="visual" pos="-0.0043 1.80111e-08 -0.018" quat="0.5 0.5 0.5 0.5" material="bottom_head_shell_material" mesh="bottom_head_shell_jaw_soft_12_narrow"/>
+              <geom class="visual" pos="0.0155 -4.56709e-05 -0.05558" quat="0.5 -0.5 0.5 -0.5" material="m12_lens_holder_material" mesh="m12_lens_holder"/>
+              <geom class="visual" pos="0.015435 -5.67089e-06 -0.06001" quat="0.5 -0.5 -0.5 0.5" material="pcb__raspberry_pi_zero_2_w_material" mesh="pcb__raspberry_pi_zero_2_w_jaw_soft_14_narrow"/>
+              <geom class="visual" pos="0.01 -0.00839298 0.0260226" quat="0.5 0.5 0.5 0.5" material="speaker_material" mesh="speaker_jaw_soft_15_narrow"/>
               <geom name="rooster_comb_0" size="0.009 0.003 0.0096" pos="0.0498348 0 0.00169299" quat="0.707107 0 0.707107 0" type="ellipsoid" contype="0" conaffinity="0" group="2" mass="0" rgba="0.8 0.08 0.06 1"/>
               <geom name="rooster_comb_1" size="0.009 0.003 0.0132" pos="0.0528348 0 -0.022845" quat="0.707107 0 0.707107 0" type="ellipsoid" contype="0" conaffinity="0" group="2" mass="0" rgba="0.8 0.08 0.06 1"/>
               <geom name="rooster_comb_2" size="0.009 0.003 0.0108" pos="0.0508348 0 -0.047383" quat="0.707107 0 0.707107 0" type="ellipsoid" contype="0" conaffinity="0" group="2" mass="0" rgba="0.8 0.08 0.06 1"/>
               <geom name="rooster_wattle" size="0.006 0.004 0.011" pos="-0.0134477 0 -0.0535175" quat="0.707107 0 0.707107 0" type="ellipsoid" contype="0" conaffinity="0" group="2" mass="0" rgba="0.8 0.08 0.06 1"/>
-              <site name="head_camera" pos="0.0155 -9.13778e-05 -0.0733" quat="0.707107 0 0.707107 0" group="3"/>
-              <site name="tof" pos="0.0135 0.0224086 -0.0733" quat="0.707107 0 0.707107 0" group="3"/>
-              <site name="head_imu" pos="0.0152323 0.000111069 -0.05106" group="3"/>
-              <site name="mouth_tip" pos="-0.00809334 0 -0.0777383" quat="0.704015 0 0.710185 0" group="3"/>
-              <camera name="head_camera" pos="0.0155 -9.13778e-05 -0.0733" quat="0 0 -1 0"/>
+              <site name="head_camera" pos="0.0155 -4.56709e-05 -0.0733" quat="0.707107 0 0.707107 0" group="3"/>
+              <site name="tof" pos="0.0135 0.0112043 -0.0733" quat="0.707107 0 0.707107 0" group="3"/>
+              <site name="head_imu" pos="0.0152323 5.55525e-05 -0.05106" group="3"/>
+              <site name="mouth_tip" pos="-0.00809334 1.80111e-08 -0.0777383" quat="0.704015 0 0.710185 0" group="3"/>
+              <camera name="head_camera" pos="0.0155 -4.56709e-05 -0.0733" quat="0 0 -1 0"/>
             </body>
           </body>
         </body>
