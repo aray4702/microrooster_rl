@@ -1,27 +1,9 @@
-# Micro Rooster RL
-
-A fork of [pollen-robotics/microduck_rl](https://github.com/pollen-robotics/microduck_rl)
-that adds **Micro Rooster**: a larger, rooster-shaped sibling of Microduck
-with 12 Feetech STS3215 servos (~1.17 kg), trained with the same
-[mjlab](https://github.com/mujocolab/mjlab) + BAM sim2real recipe. All the
-original Microduck environments are kept unchanged.
-
-| | |
-|---|---|
-| Model | [`src/mjlab_microduck/robot/microrooster/`](src/mjlab_microduck/robot/microrooster/) — generated from the Microduck walk model by `make_rooster.py` |
-| Robot cfg | [`robot/microrooster_constants.py`](src/mjlab_microduck/robot/microrooster_constants.py) |
-| Tasks | `Mjlab-Velocity-Flat-MicroRooster` ([`tasks/microrooster_velocity_env_cfg.py`](src/mjlab_microduck/tasks/microrooster_velocity_env_cfg.py)) |
-| Guide | [docs/microrooster.md](docs/microrooster.md) — view, regenerate, train |
-
-The Python package keeps its upstream name (`mjlab_microduck`) so upstream
-changes merge cleanly; rooster code uses the `microrooster` prefix throughout.
-See [NOTICE](NOTICE) for attribution.
-
-The rest of this README is the upstream Microduck documentation.
-
----
-
 # Microduck RL
+
+> Upstream documentation from
+> [pollen-robotics/microduck_rl](https://github.com/pollen-robotics/microduck_rl),
+> kept for the Microduck environments this fork still ships. Micro Rooster
+> lives in the [main README](../README.md).
 
 <img width="2215" height="884" alt="image" src="https://github.com/user-attachments/assets/5db7cc83-b3ce-4f7c-83f0-0572a63baed7" />
 
@@ -40,7 +22,7 @@ https://github.com/user-attachments/assets/50c3d537-8db2-4005-9d9c-3472faeec4d0
 The repo encodes the full sim2real recipe: [BAM](https://github.com/Rhoban/bam)
 actuator physics, domain randomization, backlash simulation, and the
 reward-design lessons that made it work
-(see [AGENTS.md](AGENTS.md) for the distilled playbook).
+(see [AGENTS.md](../AGENTS.md) for the distilled playbook).
 
 ## Quickstart
 
@@ -76,7 +58,7 @@ uv run train Mjlab-Velocity-Flat-MicroDuck --env.scene.num-envs 4096 \
 ```
 
 No GPU? Add `--hf-jobs` to any train command to run it on Hugging Face Jobs
-instead of locally (see [scripts/hf/README.md](scripts/hf/README.md)).
+instead of locally (see [scripts/hf/README.md](../scripts/hf/README.md)).
 
 ## Tasks
 
@@ -101,7 +83,7 @@ instead of locally (see [scripts/hf/README.md](scripts/hf/README.md)).
 | `Mjlab-RollerSlope-Flat-MicroDuck` | slope | Glide down slopes on rollers |
 | `Mjlab-RollerStandUp-Flat-MicroDuck` | flat | Stand up from the ground onto the wheels |
 | `Mjlab-Spin-Flat-MicroDuck` | flat | Fast spin in place on rollers |
-| `Mjlab-Velocity-Flat-MicroRooster` | flat | Velocity task on the Micro Rooster body (see [docs/microrooster.md](docs/microrooster.md)) |
+| `Mjlab-Velocity-Flat-MicroRooster` | flat | Velocity task on the Micro Rooster body (see [README](../README.md)) |
 
 At deployment the runtime hot-swaps these policies (walk / recover / trick)
 behind a shared 61-dimensional observation contract, so any of them can take
@@ -201,7 +183,7 @@ Conventions worth knowing:
   deploy ONNX produced by `scripts/export.py`, never a hand-converted
   checkpoint, or the policy sees unnormalized observations at runtime.
 
-[AGENTS.md](AGENTS.md) documents the env-building workflow and the reward-design
+[AGENTS.md](../AGENTS.md) documents the env-building workflow and the reward-design
 rules learned across the project (also aimed at AI coding agents working in
 this repo).
 
@@ -291,5 +273,5 @@ joint-index mappings, reward sign conventions, and NaN guards.
 
 ## License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache 2.0 License. See the [LICENSE](../LICENSE) file for details.
 3D model files are licensed under Creative Commons BY-SA-NC.

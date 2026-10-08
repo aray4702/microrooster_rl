@@ -11,7 +11,7 @@ Modifications in this fork add the Micro Rooster robot:
   - src/mjlab_microduck/tasks/microrooster_velocity_env_cfg.py
   - RateLimitedTargetBamActuator in src/mjlab_microduck/actuator/friction_dr_bam.py
   - head-joint handling in src/mjlab_microduck/tasks/mdp.py
-  - scripts/view_rooster.py, docs/microrooster.md
+  - scripts/view_rooster.py, README.md (upstream README moved to docs/microduck.md)
 
 The Micro Rooster model is derived from the Microduck 3D model files, which
 are licensed under Creative Commons BY-NC-SA by Pollen Robotics; the derived
