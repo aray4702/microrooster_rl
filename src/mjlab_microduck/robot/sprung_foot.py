@@ -132,6 +132,23 @@ K_SOFT = 1200.0
 K_SWEEP_LOW = 800.0
 K_SWEEP_HIGH = 2000.0
 
+# BRACKETING THE OPTIMUM FROM ABOVE, which the sweep so far does not.
+#
+# Measured, strict zero-contact definition, same reward and mass throughout:
+#   rigid 7.4 mm  <  k=1200 16.3 mm  <  k=4290 24.0 mm
+# monotonically increasing in stiffness, so the peak is at or above the boot
+# that exists and every registered sweep arm (800, 2000) is on the wrong side.
+#
+# THE THEORY PREDICTS 8000 WILL BE WORSE, and that is why it is worth running.
+# At a fixed force ceiling E* = (F^2 - (kp)^2)/2k falls with k, and the preload
+# penalty grows: at 8000 N/m the preload alone is 5.92 N per boot, 1.39x each
+# boot's share of body weight, so the spring is rigid until the load exceeds
+# that. Predicted reachable compression drops 2.63 -> 1.07 mm and stored energy
+# 34.1 -> 21.9 mJ. If 8000 still beats 4290, transmission dominates storage and
+# the search should continue upward. If it loses, the optimum is bracketed and
+# the built boot is at or near it. Either outcome ends the question.
+K_SWEEP_STIFF = 8000.0
+
 # DELTA mass of fitting a spring boot, per foot: the 69 g spring boot REPLACES
 # the 18 g standard pad foot, so 69 - 18 = 51 g. The common motor-to-boot
 # interface (16.5 g) is present in BOTH configurations and cancels.

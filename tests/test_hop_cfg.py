@@ -1337,7 +1337,10 @@ def test_spring_field_scalers_use_the_right_index_space():
 
 
 def test_hopsoft_is_hopfree_with_a_softer_boot_and_nothing_else():
-    """HopSoft exists to test ONE variable: whether the spring can participate.
+    """The stiffness sweep arms exist to test ONE variable: the spring rate.
+
+    (The function name says "softer" for history; it now also covers HopStiff at
+    8000 N/m, which brackets the optimum from ABOVE. Same contract either way.)
 
     The measured 4290 N/m boot cannot be charged by this robot -- storing the
     0.34 J a 40 mm hop needs takes 38 N per boot, nine times body weight, while
@@ -1356,7 +1359,8 @@ def test_hopsoft_is_hopfree_with_a_softer_boot_and_nothing_else():
     free = load_env_cfg("Mjlab-HopFree-S50-DR-Sym-K3344-MicroDuck")
     for tid, k in (("Mjlab-HopSoft-S50-DR-Sym-K1200-MicroDuck", 1200.0),
                    ("Mjlab-HopSoft-S50-DR-Sym-K800-MicroDuck", 800.0),
-                   ("Mjlab-HopSoft-S50-DR-Sym-K2000-MicroDuck", 2000.0)):
+                   ("Mjlab-HopSoft-S50-DR-Sym-K2000-MicroDuck", 2000.0),
+                   ("Mjlab-HopStiff-S50-DR-Sym-K8000-MicroDuck", 8000.0)):
         _assert_soft_arm_matches(free, load_env_cfg(tid), k, tid)
 
 

@@ -99,6 +99,7 @@ from mjlab_microduck.robot.sprung_foot import (
     K_MEASURED,
     K_SOFT,
     K_SWEEP_HIGH,
+    K_SWEEP_STIFF,
     K_SWEEP_LOW,
     PAD_MASS,
     PAD_MASS_V2,
@@ -369,6 +370,10 @@ for _entry in (
         # (800 / 1200 / 2000 / 4290) are directly comparable.
         ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SWEEP_LOW),
         ("HopSoft-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SWEEP_HIGH),
+        # Stiffer than the boot that exists, to bracket the optimum from above.
+        # Named Stiff rather than Soft because it is: K_SWEEP_STIFF explains why
+        # theory expects it to lose, which is what makes it worth running.
+        ("HopStiff-S50-DR", 0.5, (1.0, 5.0), "v2pads", SOLE_LENGTH_V2, "bench", K_SWEEP_STIFF),
         # HopLocked: the RIGID control, and the arm that actually settles the
         # campaign question. Same pad mass and same stance height, zero
         # compliance. With the reward mass fixed the measured 4290 boot reaches
@@ -430,10 +435,11 @@ for _entry in (
         # folded into the startswith: a label that silently misses one of them
         # is not a stiffness experiment, it is a different task (the 64-env
         # smoke test caught exactly that -- no enable bit, no airtime reward).
-        if _label.startswith(("HopFree-S50", "HopSoft-S50", "HopLocked-S50")):
+        if _label.startswith(("HopFree-S50", "HopSoft-S50", "HopStiff-S50", "HopLocked-S50")):
             cfg = make_free_hop_variant(make_hop_window_focus_variant(
                 make_structural_symmetry_variant(cfg)))
-        if _label in ("HopFree-S50-DR", "HopSoft-S50-DR", "HopLocked-S50-DR"):
+        if _label in ("HopFree-S50-DR", "HopSoft-S50-DR", "HopStiff-S50-DR",
+                      "HopLocked-S50-DR"):
             cfg = make_hop_sim2real_variant(cfg)
         if _label.endswith("SymHop"):
             cfg = make_true_hop_variant(
