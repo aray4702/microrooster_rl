@@ -16,3 +16,7 @@ Modifications in this fork add the Micro Rooster robot:
 The Micro Rooster model is derived from the Microduck 3D model files, which
 are licensed under Creative Commons BY-NC-SA by Pollen Robotics; the derived
 model files are distributed under the same terms.
+
+policies/microduck/ is an unmodified copy of Pollen Robotics' Microduck
+policy set (https://huggingface.co/pollen-robotics/microduck-policies),
+licensed under the Apache License, Version 2.0.

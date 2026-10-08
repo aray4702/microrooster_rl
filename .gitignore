@@ -42,3 +42,5 @@ logdir/.claude/worktrees/
 # Downloaded policy sets (hf download --local-dir, see docs/microrooster.md)
 duck_policies/
 rooster_policies/
+# ...except the committed policy set (see policies/README.md)
+!policies/**/*.onnx

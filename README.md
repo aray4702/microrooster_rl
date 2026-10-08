@@ -39,6 +39,7 @@ uv run mjpython scripts/view_rooster.py  # see the rooster (macOS; Linux: uv run
 | `src/mjlab_microduck/robot/microrooster/scene_rooster.xml` | generated scene with the `STAND` keyframe |
 | `src/mjlab_microduck/robot/microrooster_constants.py` | robot cfg: STS3215 BAM actuators, HOME frame, `ROOSTER_STAND_Z` |
 | `src/mjlab_microduck/tasks/microrooster_velocity_env_cfg.py` | `Mjlab-Velocity-Flat-MicroRooster` task |
+| `policies/` | committed ONNX policies: the Microduck set and Micro Rooster versions ([policies/README.md](policies/README.md)) |
 | `scripts/view_rooster.py` | MuJoCo viewer: STAND hold, or `--policy` to drive an ONNX |
 | `tests/test_microrooster_model.py` | model compiles, keyframe height, committed XML == generator output |
 
@@ -57,19 +58,13 @@ CPU MuJoCo on your own machine — no GPU needed. General notes:
 
 ### Microduck
 
-The duck's shipped policies are public on the Hub
-([`pollen-robotics/microduck-policies`](https://huggingface.co/pollen-robotics/microduck-policies));
-download them once into `duck_policies/`:
-
-```bash
-uv run hf download pollen-robotics/microduck-policies --local-dir duck_policies
-```
-
-Walk with the default walk policy (VelStand v7, 61-D obs, BAM XL330
+The duck's shipped policy set is committed in `policies/microduck/` (a copy
+of [`pollen-robotics/microduck-policies`](https://huggingface.co/pollen-robotics/microduck-policies);
+see [policies/README.md](policies/README.md) to refresh it). Walk with the default walk policy (VelStand v7, 61-D obs, BAM XL330
 actuators as in training):
 
 ```bash
-uv run mjpython scripts/infer_policy.py --walking duck_policies/velstand.onnx --new-cmd-obs
+uv run mjpython scripts/infer_policy.py --walking policies/microduck/velstand.onnx --new-cmd-obs
 ```
 
 | Key | Action |
@@ -86,7 +81,7 @@ uv run mjpython scripts/infer_policy.py --walking duck_policies/velstand.onnx --
 
 Other flags: `--lin-vel-x 0.3` starts walking without a key press;
 `--scene src/mjlab_microduck/robot/microduck/scene_walk_backlash.xml` matches
-VelStand's backlash training model; `--roulade duck_policies/roulade.onnx`
+VelStand's backlash training model; `--roulade policies/microduck/roulade.onnx`
 (R) and `--kick-left` / `--kick-right` (K / L) add the one-shot tricks.
 
 VelStand treats slow commands as "stand": at 0.15 m/s it stands still, at
@@ -118,21 +113,20 @@ the floor:
 uv run mjpython scripts/view_rooster.py
 ```
 
-Policy: HF Jobs runs upload the final checkpoint as `exported/policy.onnx` in
-the run's checkpoint repo (private: run `hf auth login` first). Download the
-v1 policy:
+Policy: the trained rooster policies are committed in `policies/microrooster/`
+([policies/README.md](policies/README.md) lists where each came from). Drive
+the v1 velocity policy:
 
 ```bash
-uv run hf download danceone/mjlab-velocity-flat-microrooster-20261007-203123 \
-  exported/policy.onnx --local-dir rooster_policies
+uv run mjpython scripts/view_rooster.py --policy policies/microrooster/velocity_v1.onnx --new-cmd-obs
+uv run mjpython scripts/view_rooster.py --policy policies/microrooster/velocity_v1.onnx --new-cmd-obs --lin-vel-x 0.2  # start walking
 ```
 
-and drive it:
-
-```bash
-uv run mjpython scripts/view_rooster.py --policy rooster_policies/exported/policy.onnx --new-cmd-obs
-uv run mjpython scripts/view_rooster.py --policy rooster_policies/exported/policy.onnx --new-cmd-obs --lin-vel-x 0.2  # start walking
-```
+A new HF Jobs run uploads its final policy as `exported/policy.onnx` in the
+run's (private) checkpoint repo; fetch it with `uv run hf auth login` once,
+then `uv run hf download <namespace>/<run-repo> exported/policy.onnx
+--local-dir <dir>`, and copy it into `policies/microrooster/` as the next
+`velocity_vN.onnx`.
 
 `--new-cmd-obs` selects the unified command block (twist + head + body) that
 `Mjlab-Velocity-Flat-MicroRooster` trains, like `infer_policy.py
@@ -216,8 +210,9 @@ uv run train Mjlab-Velocity-Flat-MicroRooster --env.scene.num-envs 4096 \
 
 - Runs: wandb `aray4702-tt/mjlab_microrooster/nsvs6avi` (iterations 0–3649,
   stopped by HF billing) → resumed from `model_3500` as `bw9t2smj` (3500–3999).
-- ONNX: `danceone/mjlab-velocity-flat-microrooster-20261007-203123`,
-  `exported/policy.onnx`.
+- ONNX: `policies/microrooster/velocity_v1.onnx` (from HF
+  `danceone/mjlab-velocity-flat-microrooster-20261007-203123`,
+  `exported/policy.onnx`).
 - Training at 3999: mean reward 65.6, episode length 806; every penalty ≤ 0;
   episode ends ≈ 1.6 falls : 3.3 timeouts; `error_vel_xy` 0.54 m/s,
   `error_vel_yaw` 1.85 rad/s.
