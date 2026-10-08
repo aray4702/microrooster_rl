@@ -376,15 +376,23 @@ TURN_IN_PLACE_MIN_FRAC = 0.1             # velocity recipe: 0.4
 # alpha_stand has the same attractor (50-70 % of its own stuck runs) and the
 # student copies it at BC coef 1.0 (runs 5/6 plateaued at the teacher's ceiling
 # on post-fall spawns for the same reason). Fixes:
-#   - HEAD-MASKED TEACHER: on frames tilted beyond HEAD_MASK_TILT_DEG the stand
-#     expert is fed the obs with its head joint pos / vel / last action zeroed
-#     (= HOME). Emulated on alpha_stand (backlash, 256 starts/family): random-joint
-#     face-up 90 → 95 %, random orientation 89 → 95 %, limp power-on 93 → 96 %,
-#     sitting 84 → 89 %, ±90° HOME spawns unchanged (98-100 %). Gate at 60°, NOT
-#     the 35° BC gate: masking during the end of the rise broke it (face-down
-#     100 → 73 % — the expert uses its head there). A pure function of the obs,
-#     so BC labels stay consistent (a time-since-fall gate would give the same
-#     obs two different labels).
+#   - JOINT-MASKED TEACHER: on frames tilted beyond TEACHER_MASK_TILT_DEG the stand
+#     expert is fed the obs with EVERY joint pos / vel / last action zeroed (= "you
+#     are at HOME"), so its label only depends on ang_vel + gravity there: the
+#     HOME-pose rise sequence it does reliably, whatever the actual joints are.
+#     Gate at 75°, NOT the 35° BC gate (the expert needs its joints for the end of
+#     the rise). A pure function of the obs, so BC labels stay consistent.
+#     Emulated closed-loop on alpha_stand (backlash, 256 starts/family): ±90° HOME
+#     spawns 97-100 %, random-joint face-up 89 → 93 %, random orientation 91 → 95 %,
+#     limp power-on 91 → 96 %, sitting 87 → 95 %, AND gentler: rise peak |ω| from the
+#     back 10.7 → 6.7 rad/s, t_rec p90 4.1 → 2.3 s.
+#     HEAD-ONLY MASK FAILED (run s4jdgkux = head cols masked above 60°, resumed from
+#     j4i6@1250): its own emulation looked fine (rj face-up 90 → 95 %), but the
+#     student froze MORE (rj face-up 74 → 55 %, ±90° side 100 → 89 %) in the same
+#     leg attractor with head_yaw moved −1.66 → −0.96. The head-masked teacher
+#     agrees with the student there (label gap 0.03 rad) and, handed control,
+#     rescues nobody; the all-joint-masked teacher at 75° rescues 98-99 % of those
+#     states. The attractor lives in the teacher's response to the LEG config.
 #     FAILED FIRST TRY (local 400 iters from j4i6@1250): dropping the teacher label
 #     on envs down > 3 s (PPO alone there) made it WORSE everywhere (rj face-up
 #     74 → 62 %, even ±90° side 100 → 88 %): with no label, PPO's cheapest answer in
@@ -393,11 +401,10 @@ TURN_IN_PLACE_MIN_FRAC = 0.1             # velocity recipe: 0.4
 #   - WIDER SPAWNS in the same 45 % prone slice: random servo joints (head
 #     included) on half of it, a quarter of it at a uniformly random orientation,
 #     plus a small sitting slice — the states where the freeze happens.
-ENABLE_HEAD_MASKED_TEACHER = True
-HEAD_MASK_TILT_DEG = 60.0
-# Flat 61D actor obs: ang_vel 0:3, gravity 3:6, joint_pos 6:20, joint_vel 20:34, last action 34:48;
-# head/neck = servos 5-8 (neck_pitch, head_pitch, head_yaw, head_roll).
-HEAD_OBS_COLS = tuple(range(6 + 5, 6 + 9)) + tuple(range(20 + 5, 20 + 9)) + tuple(range(34 + 5, 34 + 9))
+ENABLE_JOINT_MASKED_TEACHER = True
+TEACHER_MASK_TILT_DEG = 75.0
+# Flat 61D actor obs: ang_vel 0:3, gravity 3:6, joint_pos 6:20, joint_vel 20:34, last action 34:48.
+TEACHER_MASK_COLS = tuple(range(6, 48))
 ENABLE_WIDE_SPAWNS = True
 WIDE_JOINT_RANDOM_PROB = 0.5    # share of the prone slice with random servo joints
 WIDE_JOINT_RANGE_FRAC = 0.9
@@ -939,7 +946,7 @@ MicroduckVelStandRlCfg = RslRlOnPolicyRunnerCfg(
             **default_bc_cfg(), "coef": EXPERT_BC_COEF, "gate_tilt_deg": EXPERT_BC_GATE_TILT_DEG,
             **({"body_slice": (55, 61)} if ENABLE_BODY_CONTROL else {}),
             **({"unanchor_turn_in_place": True} if ENABLE_YAW_FIX else {}),
-            **({"expert_mask_cols": HEAD_OBS_COLS, "expert_mask_tilt_deg": HEAD_MASK_TILT_DEG} if ENABLE_HEAD_MASKED_TEACHER else {}),
+            **({"expert_mask_cols": TEACHER_MASK_COLS, "expert_mask_tilt_deg": TEACHER_MASK_TILT_DEG} if ENABLE_JOINT_MASKED_TEACHER else {}),
         } if ENABLE_EXPERT_BC else None,
     ),
     wandb_project="mjlab_microduck",

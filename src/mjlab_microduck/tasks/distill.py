@@ -99,15 +99,14 @@ def default_bc_cfg() -> dict:
         # Flat actor-obs columns ZEROED in the stand expert's input on fallen frames (tilt >
         # gate_tilt_deg; never on body-control frames). Zero = HOME for joint_pos_rel / zero
         # velocity / zero last action. 2026-10 (branch improve_standup_velstand): alpha_stand
-        # freezes on its back holding head_yaw at −1.6 rad — a fixed point it reads off its own
-        # head joints. Fed head-masked obs it gets up 95-100 % from random-joint / random-
-        # orientation / sitting starts (vs 84-91 %), unchanged from trained spawns (emulated).
-        # The mask is a pure function of the obs, so labels stay consistent. Only frames tilted
-        # beyond expert_mask_tilt_deg are masked: masking from the 35° BC gate broke the END of
-        # the rise (the expert uses its head mid-rise: face-down 100 → 73 %); from 60° it is
-        # neutral on trained spawns and fixes the freeze (emulated, alpha_stand).
+        # freezes on its back in a fixed point it reads off its own joints, and the student copies
+        # it. Masking only the head moved the freeze (run s4jdgkux); masking every joint col
+        # (6:48) above 75° makes the label the HOME-pose rise, which gets the teacher up from
+        # random-joint / random-orientation / sitting starts and rescues 98-99 % of the student's
+        # stuck states (emulated). A pure function of the obs, so labels stay consistent. Masking
+        # from the 35° BC gate broke the END of the rise (the expert needs its joints there).
         "expert_mask_cols": (),
-        "expert_mask_tilt_deg": 60.0,
+        "expert_mask_tilt_deg": 75.0,
     }
 
 
@@ -232,7 +231,7 @@ class PpoWithExpertBc(PPO):
         stats = {"expert_bc_fallen_frac": fallen.float().mean().item(), "expert_bc_anchor_frac": upright.float().mean().item(),
                  "expert_bc_body_teach_frac": body_teach.float().mean().item(),
                  "expert_bc_turn_free_frac": turn_free.float().mean().item()}
-        tilted = fallen_mask_from_obs(flat, gsl, cfg.get("expert_mask_tilt_deg", 60.0)) & fallen  # expert_mask_cols rows
+        tilted = fallen_mask_from_obs(flat, gsl, cfg.get("expert_mask_tilt_deg", 75.0)) & fallen  # expert_mask_cols rows
         fallen = fallen | body_teach
         if fallen.sum().item() < cfg["min_samples"]:
             fallen = torch.zeros_like(fallen)  # too few fallen frames: anchor-only pass (or nothing)

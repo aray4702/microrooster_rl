@@ -530,31 +530,27 @@ def test_sit_slice_is_exclusive(monkeypatch):
 def test_expert_input_masks_only_selected_rows():
     from mjlab_microduck.tasks.distill import expert_input
     obs = torch.ones(3, 61)
-    out = expert_input(obs, (48, 51), mask_cols=vs.HEAD_OBS_COLS, mask_rows=torch.tensor([True, False, True]))
+    out = expert_input(obs, (48, 51), mask_cols=vs.TEACHER_MASK_COLS, mask_rows=torch.tensor([True, False, True]))
     assert (out[:, 48:51] == 0).all()                       # twist always zeroed for the stand expert
-    assert (out[0, list(vs.HEAD_OBS_COLS)] == 0).all() and (out[1, list(vs.HEAD_OBS_COLS)] == 1).all()
-    others = [c for c in range(61) if c not in vs.HEAD_OBS_COLS and not 48 <= c < 51]
-    assert (out[:, others] == 1).all()
+    assert (out[0, list(vs.TEACHER_MASK_COLS)] == 0).all() and (out[1, list(vs.TEACHER_MASK_COLS)] == 1).all()
+    others = [c for c in range(61) if c not in vs.TEACHER_MASK_COLS and not 48 <= c < 51]
+    assert (out[:, others] == 1).all()                      # ang_vel, gravity, head/body cmds kept
     assert (obs == 1).all()                                 # input untouched
 
 
-def test_head_obs_cols_are_the_neck_servos():
-    """joint_pos 6:20, joint_vel 20:34, last action 34:48; servos 5-8 = neck_pitch, head_pitch, head_yaw, head_roll."""
-    assert vs.HEAD_OBS_COLS == (11, 12, 13, 14, 25, 26, 27, 28, 39, 40, 41, 42)
+def test_teacher_mask_cols_are_the_joint_blocks():
+    """ang_vel 0:3, gravity 3:6, joint_pos 6:20, joint_vel 20:34, last action 34:48 — mask = all joint state."""
+    assert vs.TEACHER_MASK_COLS == tuple(range(6, 48))
     cfg = vs.make_microduck_velstand_env_cfg()
     assert list(cfg.observations["actor"].terms)[:5] == ["base_ang_vel", "projected_gravity", "joint_pos", "joint_vel", "actions"]
-    m = get_allcollisions_spec().compile()
-    names = [mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(1, m.njnt)]  # skip the free joint
-    servos = [n for n in names if not n.startswith("passive_")]
-    assert servos[5:9] == ["neck_pitch", "head_pitch", "head_yaw", "head_roll"]
 
 
-def test_head_masked_teacher_wired():
+def test_joint_masked_teacher_wired():
     bc = vs.MicroduckVelStandRlCfg.algorithm.bc_cfg
-    if vs.ENABLE_HEAD_MASKED_TEACHER:
-        assert tuple(bc["expert_mask_cols"]) == vs.HEAD_OBS_COLS
+    if vs.ENABLE_JOINT_MASKED_TEACHER:
+        assert tuple(bc["expert_mask_cols"]) == vs.TEACHER_MASK_COLS
         # masking from the 35° BC gate broke the end of the rise (emulated) — keep it well above
-        assert bc["expert_mask_tilt_deg"] == vs.HEAD_MASK_TILT_DEG >= 55.0 > bc["gate_tilt_deg"]
+        assert bc["expert_mask_tilt_deg"] == vs.TEACHER_MASK_TILT_DEG >= 70.0 > bc["gate_tilt_deg"]
     else:
         assert not bc.get("expert_mask_cols")
     assert bc["coef"] == 1.0 and bc["anchor_coef"] == 1.0  # teacher strengths unchanged
