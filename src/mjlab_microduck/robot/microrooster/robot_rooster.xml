@@ -1,5 +1,5 @@
 <mujoco model="microduck">
-  <compiler angle="radian" meshdir="assets/"/>
+  <compiler angle="radian" meshdir="../microduck/assets/"/>
 
   <default>
 

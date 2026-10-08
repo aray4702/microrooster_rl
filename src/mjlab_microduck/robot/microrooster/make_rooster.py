@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Generate the Micro Rooster phase-1 model from the Microduck walk model.
 
-    uv run python src/mjlab_microduck/robot/microduck/make_rooster.py
+    uv run python src/mjlab_microduck/robot/microrooster/make_rooster.py
 
-Writes robot_rooster.xml + scene_rooster.xml next to this file (so the duck's
-mesh assets resolve) and prints the mass budget and standing height.
+Writes robot_rooster.xml + scene_rooster.xml next to this file (meshes are
+the duck's, referenced in ../microduck/assets/) and prints the mass budget and
+standing height.
 
 What changes vs robot_walk.xml (rough sim prototype, not a CAD export):
   - 12 servos instead of 14: head_yaw and head_roll are welded (joint +
@@ -23,13 +24,14 @@ What changes vs robot_walk.xml (rough sim prototype, not a CAD export):
 Every number below is a phase-1 guess to be replaced by CAD + scale readings.
 """
 
+import os
 from pathlib import Path
 
 import mujoco
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-SRC_XML = HERE / "robot_walk.xml"
+SRC_XML = HERE.parent / "microduck" / "robot_walk.xml"
 OUT_ROBOT = HERE / "robot_rooster.xml"
 OUT_SCENE = HERE / "scene_rooster.xml"
 
@@ -348,6 +350,8 @@ def main():
     com = data.subtree_com[1]
     head_top = subtree_visual_aabb(rooster, data, "yaw_roll_motion")[1][2]
 
+    # The rooster reuses the duck's meshes: point meshdir back at them.
+    spec.meshdir = os.path.relpath(SRC_XML.parent / spec.meshdir, HERE) + "/"
     OUT_ROBOT.write_text(spec.to_xml())
     write_scene(rooster, stand_z)
 

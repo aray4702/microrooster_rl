@@ -21,7 +21,7 @@ from bam.model import load_model
 sys.path.insert(0, "scripts")
 from infer_policy import load_mujoco_with_bam  # noqa: E402
 
-SCENE = "src/mjlab_microduck/robot/microduck/scene_rooster.xml"
+SCENE = "src/mjlab_microduck/robot/microrooster/scene_rooster.xml"
 
 
 def build():

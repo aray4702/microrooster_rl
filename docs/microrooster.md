@@ -21,7 +21,7 @@ Regenerate `robot_rooster.xml` + `scene_rooster.xml` after editing the
 constants in `make_rooster.py`:
 
 ```bash
-uv run python src/mjlab_microduck/robot/microduck/make_rooster.py
+uv run python src/mjlab_microduck/robot/microrooster/make_rooster.py
 ```
 
 Train the walking policy (the duck velocity recipe with a 2D head command and
