@@ -58,34 +58,40 @@ from mjlab_microduck.tasks.symmetry import PpoWithSymmetryCfg
 
 EXPERT_CACHE_DIR = Path("logs/rsl_rl/expert_cache")
 
-# Teacher overrides, "<entity/project/run_id>@<model_N.pt>": the defaults are
-# Pollen's wandb runs, which other accounts cannot read. --hf-jobs forwards
-# every MICRODUCK_* variable to the job. See docs/microduck_velstand_training.md.
+# Teacher overrides: "<entity/project/run_id>@<model_N.pt>" (a wandb run), or
+# "<path>.onnx" (an exported policy in the repo, e.g. policies/microduck/alpha_stand.onnx
+# — the HF Jobs source tarball ships the repo). The defaults are Pollen's wandb runs,
+# which other accounts cannot read. --hf-jobs forwards every MICRODUCK_* variable
+# to the job. See docs/microduck_velstand_training.md.
 WALK_EXPERT_ENV = "MICRODUCK_WALK_EXPERT"
 STAND_EXPERT_ENV = "MICRODUCK_STAND_EXPERT"
 
 
-def expert_run(env_var: str, default_run: str, default_checkpoint: str) -> tuple[str, str]:
-    """(wandb run path, checkpoint name) from ``env_var`` if set, else the defaults."""
+def expert_run(env_var: str, default_run: str, default_checkpoint: str) -> tuple[str | None, str | None, str | None]:
+    """(wandb run path, checkpoint name, local path) from ``env_var`` if set, else the defaults."""
     value = os.environ.get(env_var, "").strip()
     if not value:
-        return default_run, default_checkpoint
+        return default_run, default_checkpoint, None
+    if value.endswith(".onnx"):
+        if not Path(value).is_file():
+            raise ValueError(f"{env_var}={value!r}: ONNX file not found")
+        return None, None, value
     run, sep, checkpoint = value.partition("@")
     if not sep or run.count("/") != 2 or not checkpoint.endswith(".pt"):
-        raise ValueError(f"{env_var}={value!r}: expected <entity/project/run_id>@<model_N.pt>")
-    return run, checkpoint
+        raise ValueError(f"{env_var}={value!r}: expected <entity/project/run_id>@<model_N.pt> or <path>.onnx")
+    return run, checkpoint, None
 
 
 def default_bc_cfg() -> dict:
-    stand_run, stand_ckpt = expert_run(
+    stand_run, stand_ckpt, stand_path = expert_run(
         STAND_EXPERT_ENV, "pollen-robotics/mjlab_microduck/69u48n8l", "model_9750.pt")
-    walk_run, walk_ckpt = expert_run(
+    walk_run, walk_ckpt, walk_path = expert_run(
         WALK_EXPERT_ENV, "pollen-robotics/mjlab_microduck/441tzs6d", "model_3750.pt")
     return {
-        # Expert checkpoint: either a local ``checkpoint_path`` or a wandb run.
+        # Expert checkpoint: a local ``checkpoint_path`` (rsl_rl .pt or exported .onnx) or a wandb run.
         "wandb_run_path": stand_run,
         "checkpoint_name": stand_ckpt,
-        "checkpoint_path": None,
+        "checkpoint_path": stand_path,
         "coef": 1.0,               # MSE weight (actions in rad)
         "learning_rate": 3e-4,     # dedicated Adam (PPO's adaptive-KL LR must not throttle the BC)
         "gate_tilt_deg": 35.0,     # stand expert teaches frames with tilt > this
@@ -98,7 +104,7 @@ def default_bc_cfg() -> dict:
         # Walk anchor (run-3 lesson): the warm-start walk teaches frames with tilt < anchor_tilt_deg.
         "anchor_wandb_run_path": walk_run,
         "anchor_checkpoint_name": walk_ckpt,
-        "anchor_checkpoint_path": None,
+        "anchor_checkpoint_path": walk_path,
         "anchor_coef": 1.0,
         "anchor_tilt_deg": 25.0,
         # Body-control routing (2026-10, branch improve_velstand2). When body_slice is set,
@@ -175,6 +181,42 @@ def load_expert_from(actor: torch.nn.Module, state_dict: dict) -> torch.nn.Modul
     return expert
 
 
+def actor_state_from_onnx(path: Path, actor: torch.nn.Module, eps: float = 1e-2) -> dict:
+    """Actor state dict rebuilt from an exported policy ONNX (scripts/export.py graph:
+    Sub(mean) -> Div(std + eps) -> MLP). ``eps`` is rsl_rl EmpiricalNormalization's;
+    the frozen expert only runs forward, so _var/count only need to be consistent and
+    the action-noise parameters keep the student's values (unused by BC)."""
+    import onnx
+    from onnx import numpy_helper
+
+    weights = {t.name: torch.from_numpy(numpy_helper.to_array(t).copy()) for t in onnx.load(str(path)).graph.initializer}
+    state = {k: v.clone() for k, v in actor.state_dict().items()}
+    divisors = [v for k, v in weights.items() if k.startswith("onnx::Div")]
+    if len(divisors) != 1:
+        raise ValueError(f"{path}: expected one normalizer divisor initializer, found {len(divisors)}")
+    std = divisors[0] - eps
+    for key, value in [("obs_normalizer._mean", weights["obs_normalizer._mean"]),
+                       ("obs_normalizer._std", std), ("obs_normalizer._var", std * std)]:
+        state[key] = value.reshape(state[key].shape).to(state[key].dtype)
+    for key, value in weights.items():
+        if key.startswith("mlp."):
+            if key not in state or state[key].shape != value.shape:
+                raise ValueError(f"{path}: {key} {tuple(value.shape)} does not fit the student actor")
+            state[key] = value.to(state[key].dtype)
+    missing = {k for k in state if k.startswith("mlp.")} - set(weights)
+    if missing:
+        raise ValueError(f"{path}: missing actor weights {sorted(missing)}")
+    return state
+
+
+def _load_teacher(path: Path, actor: torch.nn.Module, device) -> tuple[torch.nn.Module, object]:
+    """Frozen teacher from an rsl_rl checkpoint or an exported ONNX; (expert, iteration)."""
+    if path.suffix == ".onnx":
+        return load_expert_from(actor, actor_state_from_onnx(path, actor)).to(device), path.name
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+    return load_expert_from(actor, ckpt["actor_state_dict"]).to(device), ckpt.get("iter")
+
+
 def _resolve_checkpoint(bc_cfg: dict, prefix: str = "") -> Path | None:
     """Local ``<prefix>checkpoint_path`` if given, else download ``<prefix>wandb_run_path``."""
     if bc_cfg.get(f"{prefix}checkpoint_path"):
@@ -196,18 +238,16 @@ class PpoWithExpertBc(PPO):
         self.expert = None
         self.anchor = None
         if bc_cfg:
-            ckpt = torch.load(_resolve_checkpoint(bc_cfg), map_location=self.device, weights_only=False)
-            self.expert = load_expert_from(self.actor, ckpt["actor_state_dict"]).to(self.device)
+            self.expert, expert_iter = _load_teacher(_resolve_checkpoint(bc_cfg), self.actor, self.device)
             anchor_path = _resolve_checkpoint(bc_cfg, "anchor_") if bc_cfg.get("anchor_coef", 0.0) > 0 else None
             if anchor_path is not None:
-                ack = torch.load(anchor_path, map_location=self.device, weights_only=False)
-                self.anchor = load_expert_from(self.actor, ack["actor_state_dict"]).to(self.device)
+                self.anchor, _ = _load_teacher(anchor_path, self.actor, self.device)
             # Own optimizer: PPO's adaptive-KL schedule and shared Adam moments
             # would otherwise throttle/mix the BC step (first path check: 4 BC
             # steps through the PPO optimizer lost to 20 PPO steps per iteration).
             self.bc_optimizer = torch.optim.Adam(self.actor.parameters(), lr=bc_cfg["learning_rate"])
             print(
-                f"[distill] expert BC ON: stand expert (iter {ckpt.get('iter')}) on tilt>{bc_cfg['gate_tilt_deg']}° coef={bc_cfg['coef']}; "
+                f"[distill] expert BC ON: stand expert (iter {expert_iter}) on tilt>{bc_cfg['gate_tilt_deg']}° coef={bc_cfg['coef']}; "
                 f"walk anchor {'ON on tilt<' + str(bc_cfg['anchor_tilt_deg']) + '° coef=' + str(bc_cfg['anchor_coef']) if self.anchor is not None else 'OFF'}; "
                 f"lr={bc_cfg['learning_rate']} epochs={bc_cfg['epochs']} mini_batches={bc_cfg['mini_batches']} min_mb={bc_cfg.get('min_mini_batch', 1)}"
             )

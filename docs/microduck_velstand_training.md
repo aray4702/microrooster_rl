@@ -35,7 +35,8 @@ So the teachers must exist first. Both are read from wandb runs; by default
 Iteration counts are the ones the v7 lineage used. One iteration = 24 steps ×
 4096 envs (~98k samples) followed by 5 PPO epochs × 4 mini-batches; it is
 what `--agent.max_iterations` counts. Checkpoints are saved every 250
-iterations (`model_<N>.pt`, uploaded to wandb and the job's HF repo).
+iterations (`model_<N>.pt`, uploaded to wandb and the job's HF repo); the final
+checkpoint of an N-iteration run is `model_<N-1>.pt` (e.g. `model_3749.pt`).
 
 | # | Stage | Task | Iterations | Starts from | Needs |
 | --- | --- | --- | --- | --- | --- |
@@ -63,13 +64,13 @@ uv run train Mjlab-StandUp-Flat-MicroDuck --env.scene.num-envs 4096 \
   --agent.max_iterations 9750 --hf-jobs --namespace danceone --detach
 
 # teachers for 3–5 (fill in the run ids printed in the job logs)
-export MICRODUCK_WALK_EXPERT=aray4702-tt/mjlab_microduck/<run1>@model_3750.pt
-export MICRODUCK_STAND_EXPERT=aray4702-tt/mjlab_microduck/<run2>@model_9750.pt
+export MICRODUCK_WALK_EXPERT=aray4702-tt/mjlab_microduck/<run1>@model_3749.pt
+export MICRODUCK_STAND_EXPERT=aray4702-tt/mjlab_microduck/<run2>@model_9749.pt
 
 # 3 — warm start: new task, stage-1 weights, curricula restarted at 0
 MICRODUCK_WARM_START=1 uv run train Mjlab-VelStand-Flat-MicroDuck --env.scene.num-envs 4096 \
   --agent.resume True --wandb-run-path aray4702-tt/mjlab_microduck/<run1> \
-  --wandb-checkpoint-name model_3750.pt --agent.max_iterations 6000 \
+  --wandb-checkpoint-name model_3749.pt --agent.max_iterations 6000 \
   --hf-jobs --namespace danceone --detach
 
 # 4
@@ -81,7 +82,7 @@ MICRODUCK_WARM_START=1 uv run train Mjlab-VelStand-Rough-Backlash-MicroDuck --en
 # 5
 MICRODUCK_WARM_START=1 uv run train Mjlab-VelStand-Rough-Backlash-MicroDuck --env.scene.num-envs 4096 \
   --agent.resume True --wandb-run-path aray4702-tt/mjlab_microduck/<run4> \
-  --wandb-checkpoint-name model_3750.pt --agent.max_iterations 1500 \
+  --wandb-checkpoint-name model_3749.pt --agent.max_iterations 1500 \
   --hf-jobs --namespace danceone --detach
 ```
 
@@ -143,8 +144,8 @@ from our runs and no NaN termination.
 | S2 | smoke: stand teacher | `6ac7f1bb` ✅ | `bs3ed7ur` | `model_4.pt` | 2026-10-08, 64 envs × 5 iters, exit 0 |
 | S3 | smoke: VelStand Flat (warm start + teachers) | `6ac7f538` ✅ | `o5x08egh` | `model_4.pt` | warm start from S1; BC on with S1 (anchor) + S2 (stand) loaded from our runs; no NaN; ONNX auto-export OK |
 | S4 | smoke: VelStand Rough-Backlash | `6ac7f66e` ✅ | `alnpb06v` | `model_4.pt` | warm start from S3; same teachers; no NaN; ONNX auto-export OK |
-| 1 | walk teacher | | | | |
-| 2 | stand-up teacher | | | | |
-| 3 | VelStand v1 | | | | |
+| 1 | walk teacher | `6ac7fda8` | `u35cfbnv` | `model_3749.pt` | 2026-10-08, l4x1, 3,750 iters, ckpts → HF `danceone/mjlab-velocity-flat-microduck-20261008-133131` |
+| 2 | stand-up teacher | `6ac7fdad` ❌ | `kbnmpsrf` | `model_9749.pt` | 2026-10-08, l4x1, 9,750 iters, ckpts → HF `danceone/mjlab-standup-flat-microduck-20261008-133137` **Head-tripod, never stands up**: `scripts/recovery_battery.py` 0/20 from face-down/face-up/side/push on its own model (scene.xml) and on all-collisions; every checkpoint 1000–9749 the same. Parks on ankles + jaw — tall (z 115 mm, 34° lean, neck −1.92 rad) or low (z 59 mm, 65°). Same battery: `alpha_stand.onnx` 20/20 · 20/20 · 20/20 · 20/20. |
+| 3 | VelStand v1 | `6ac88195` ❌ | `e9wdy7ai` | — (`model_5999.pt` exists) | 2026-10-09, warm start from 1 @ `model_3749.pt`, teachers 1 @ 3749 + 2 @ 9749. **Never learned get-up**: `recovery_success` ≈ 0 all run (weight 10); once prone spawns + 1.2 m/s topples ramp in, ~98% of episodes end `fallen_too_long`, `upright` 1.77 → 0.11, mean reward 108 → 14. Same "lies still" signature as the cfg's run-1/2 notes. Suspect: stand teacher 2 can't recover from VelStand's fallen states (never measured). Stage 4 not launched. **Cause confirmed** (battery): cloned teacher 2's low tripod — parks on ankles + jaw + trunk at 65° from every spawn, 0/20 everywhere; shipped `velstand.onnx` 20/20/20 and 16/18 push. |
 | 4 | VelStand rough + backlash | | | | |
 | 5 | VelStand body control | | | | |
