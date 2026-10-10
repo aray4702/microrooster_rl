@@ -236,6 +236,7 @@ Training recipes, the sim2real playbook and every Microduck task:
 
 ## License
 
-Code: Apache 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). The 3D model
-files, including the Micro Rooster model derived from them, are licensed
-under Creative Commons BY-NC-SA.
+Code, including the Micro Rooster additions: Apache 2.0, see
+[LICENSE](LICENSE) and [NOTICE](NOTICE). The 3D model files, including the
+Micro Rooster model derived from them, are licensed under Creative Commons
+BY-NC-SA.

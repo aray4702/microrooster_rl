@@ -5,7 +5,8 @@ This project is a fork of microduck_rl by Pollen Robotics
 (https://github.com/pollen-robotics/microduck_rl), licensed under the
 Apache License, Version 2.0 (see LICENSE).
 
-Modifications in this fork add the Micro Rooster robot:
+Modifications in this fork, also licensed under the Apache License,
+Version 2.0, add the Micro Rooster robot:
   - src/mjlab_microduck/robot/microrooster/ (model generator and generated MJCF)
   - src/mjlab_microduck/robot/microrooster_constants.py
   - src/mjlab_microduck/tasks/microrooster_velocity_env_cfg.py
